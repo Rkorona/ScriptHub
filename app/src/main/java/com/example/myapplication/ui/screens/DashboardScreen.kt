@@ -190,7 +190,6 @@ fun DashboardScreen(
     }
 }
 
-// 📌 彻底整容的网格小卡片组件
 @Composable
 fun StatusCard(
     title: String, 
@@ -203,27 +202,20 @@ fun StatusCard(
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = RoundedCornerShape(24.dp) // 大圆角显得非常现代
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(18.dp)
         ) {
-            // 顶层：标题 + 彩色 Icon 微标
+            // 📌 核心改动：改为 Start 对齐，让 Icon 率先登场
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Start, 
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title, 
-                    fontSize = 12.sp, 
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                )
-                
-                // 核心视觉改良：带 15% 透明底色的 Icon 容器
+                // 1. 霓虹 Icon 微标率先在左边占位
                 Box(
                     modifier = Modifier
                         .size(32.dp)
@@ -237,9 +229,21 @@ fun StatusCard(
                         modifier = Modifier.size(16.dp)
                     )
                 }
+                
+                // 2. 完美的间距隔离
+                Spacer(modifier = Modifier.width(10.dp))
+                
+                // 3. 标题文本紧随其后
+                Text(
+                    text = title, 
+                    fontSize = 12.sp, 
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
             }
             
-            Spacer(modifier = Modifier.height(8.dp))
+            // 稍微拉大一点点和下方巨型数字的呼吸间距
+            Spacer(modifier = Modifier.height(10.dp))
             
             // 底层：夸张放大的粗体数字
             Text(
