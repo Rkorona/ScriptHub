@@ -40,7 +40,7 @@ fun MainScreen() {
         // 📌 核心路由逻辑：根据选中的标签，渲染对应的独立页面文件！
         when (currentRoute) {
             "Dashboard" -> DashboardScreen(contentPadding = innerPadding)
-            "ScriptManager" -> ScriptManagerScreen(innerPadding = innerPadding)
+            "ScriptManager" -> ScriptManagerScreen(contentPadding = innerPadding)
             "settings" -> SettingsScreen(innerPadding = innerPadding)
             
         }

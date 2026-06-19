@@ -118,12 +118,16 @@ fun ScriptManagerScreen(
                         onClick = { selectedFilter = filter },
                         label = { Text(filter, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                         colors = FilterChipDefaults.filterChipColors(
+                            enabled = true,          // 📌 针对旧版 M3 必须显式传入
+                            selected = isSelected,   // 📌 针对旧版 M3 必须显式传入
                             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                             selectedLabelColor = MaterialTheme.colorScheme.primary,
                             containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f),
                             labelColor = MaterialTheme.colorScheme.onSurfaceVariant
                         ),
                         border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,          // 📌 针对旧版 M3 必须显式传入
+                            selected = isSelected,   // 📌 针对旧版 M3 必须显式传入
                             borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
                             selectedBorderColor = MaterialTheme.colorScheme.primary,
                             borderWidth = 1.dp,
