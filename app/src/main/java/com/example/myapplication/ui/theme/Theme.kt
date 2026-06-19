@@ -13,13 +13,13 @@ import androidx.compose.ui.platform.LocalContext
 
 // 🌙 深色配置映射（方案二：元气潮酷 - 完美重制版）
 private val DarkColorScheme = darkColorScheme(
-    primary = CoolDarkPrimary,
-    secondary = CoolDarkSecondary,
-    tertiary = CoolDarkTertiary,
-    background = CoolDarkBackground,
-    surfaceContainer = CoolDarkSurfaceContainer,
-    onSurface = CoolDarkOnSurface,
-    onPrimary = CoolDarkBackground,
+    primary = NatureDarkPrimary,
+    secondary = NatureDarkSecondary,
+    tertiary = NatureDarkTertiary,
+    background = NatureDarkBackground,
+    surfaceContainer = NatureDarkSurfaceContainer,
+    onSurface = NatureDarkOnSurface,
+    onPrimary = NatureDarkBackground,
 
     // 📌 重点修复：接管深色模式下的胶囊底色和选中的图标色
     secondaryContainer = Color(0xFF1E3A8A),       // 深邃的高级暗蓝胶囊底
@@ -28,17 +28,17 @@ private val DarkColorScheme = darkColorScheme(
 
 // ☀️ 浅色配置映射（方案二：元气潮酷 - 完美重制版）
 private val LightColorScheme = lightColorScheme(
-    primary = CoolLightPrimary,
-    secondary = CoolLightSecondary,
-    tertiary = CoolLightTertiary,
-    background = CoolLightBackground,
-    surfaceContainer = CoolLightSurfaceContainer,
-    onSurface = CoolLightOnSurface,
+    primary = NatureLightPrimary,
+    secondary = NatureLightSecondary,
+    tertiary = NatureLightTertiary,
+    background = NatureLightBackground,
+    surfaceContainer = NatureLightSurfaceContainer,
+    onSurface = NatureLightOnSurface,
     onPrimary = Color.White,
 
     // 📌 重点修复：接管浅色模式下的胶囊底色和选中的图标色
     secondaryContainer = Color(0xFFDBEAFE),       // 极其清爽的淡蓝色胶囊底
-    onSecondaryContainer = CoolLightPrimary,      // 胶囊内部选中的图标采用克莱因蓝
+    onSecondaryContainer = NatureLightPrimary,      // 胶囊内部选中的图标采用克莱因蓝
 )
 
 @Composable
