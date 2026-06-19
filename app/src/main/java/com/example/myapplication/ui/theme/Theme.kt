@@ -18,7 +18,7 @@ private val DarkColorScheme = darkColorScheme(
     background = CoolDarkBackground,
     surfaceContainer = CoolDarkSurfaceContainer,
     onSurface = CoolDarkOnSurface,
-    onPrimary = CoolDarkOnPrimary
+    onPrimary = CoolDarkBackground
 )
 
 // ☀️ 浅色配置映射
@@ -29,7 +29,7 @@ private val LightColorScheme = lightColorScheme(
     background = CoolLightBackground,
     surfaceContainer = CoolLightSurfaceContainer,
     onSurface = CoolLightOnSurface,
-    onPrimary = CoolLightOnPrimary
+    onPrimary = LightBackground
 )
 
 @Composable
