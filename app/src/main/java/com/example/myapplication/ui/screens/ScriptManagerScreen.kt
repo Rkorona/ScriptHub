@@ -55,7 +55,7 @@ fun ScriptManagerScreen(
     contentPadding: PaddingValues = PaddingValues(),
     modifier: Modifier = Modifier
 ) {
-    // 丰富假数据体系，完美对应 Dashboard 联动，并覆盖“单文件、全依赖、未安装、安装失败”全场景
+    // 假数据体系
     val scripts = remember {
         listOf(
             ScriptProject("telegram_bot", "Python", "⏰ crontab: */10 * * * *", "上次成功: 2分钟前", true, Color(0xFF38BDF8), isFolder = true, entryPoint = "main.py", dependencyStatus = DependencyStatus.Installed),
@@ -72,22 +72,29 @@ fun ScriptManagerScreen(
     val filters = listOf("全部", "Python", "Shell", "Node.js")
 
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        // 🛠️ 核心修复 1：让 Scaffold 的底部边界完美收缩到导航栏上方，把被埋掉的 FAB 拯救出来！
+        modifier = modifier
+            .fillMaxSize()
+            .padding(bottom = contentPadding.calculateBottomPadding()),
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { /* 新建脚本或导入文件夹 */ },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = RoundedCornerShape(18.dp)
+            // 🌟 换上了更符合 M3 Expressive 规范的 Extended FAB，极具动感与辨识度
+            ExtendedFloatingActionButton(
+                onClick = { /* 弹出底部创建面板：新建单文件/导入项目文件夹 */ },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = RoundedCornerShape(16.dp),
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 3.dp,
+                    pressedElevation = 6.dp
+                )
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add")
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("导入项目", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Add Project",
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("新建配置", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
     ) { innerPadding ->
@@ -153,7 +160,9 @@ fun ScriptManagerScreen(
             // 📜 3. 进化版自动化武器库列表
             LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 80.dp),
+                // 🛠️ 核心修复 2：将 bottom 边距安全值拉高到 96.dp！
+                // 确保列表滑到最底时，最后一张卡片完全越过 FAB 按钮，绝对不产生一丁点物理遮挡。
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(scripts.filter { selectedFilter == "全部" || it.type == selectedFilter }) { script ->
@@ -167,7 +176,6 @@ fun ScriptManagerScreen(
 // 📌 核心重构单体：支持文件夹项目与环境自检的 Expressive 卡片
 @Composable
 fun ScriptCard(script: ScriptProject) {
-    // 慢速呼吸灯动画（运行中外圈散发对应色系微光）
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.05f,
@@ -179,7 +187,6 @@ fun ScriptCard(script: ScriptProject) {
         label = "pulseAlpha"
     )
 
-    // 只有当依赖就绪或是单文件时，才允许一键快火运行
     val isExecutable = script.dependencyStatus == DependencyStatus.None || script.dependencyStatus == DependencyStatus.Installed
 
     Card(
@@ -193,7 +200,7 @@ fun ScriptCard(script: ScriptProject) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 1. 左侧：智能视觉分流徽章（文件夹 VS 单文件）
+                // 1. 左侧：智能视觉分流徽章
                 Box(
                     modifier = Modifier
                         .size(46.dp)
@@ -210,7 +217,6 @@ fun ScriptCard(script: ScriptProject) {
                             .background(script.themeColor.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        // 📁 核心改动：如果是项目文件夹，显示 Folder 图标；如果是单文件，显示 Terminal 极客图标
                         Icon(
                             imageVector = if (script.isFolder) Icons.Default.Folder else Icons.Default.Terminal,
                             contentDescription = null,
@@ -235,7 +241,6 @@ fun ScriptCard(script: ScriptProject) {
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         
-                        // 优雅紧凑的语言高亮 Badge
                         Box(
                             modifier = Modifier
                                 .background(script.themeColor.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
@@ -253,7 +258,6 @@ fun ScriptCard(script: ScriptProject) {
                         }
                     }
                     
-                    // 📁 核心改动：如果是文件夹，直观展示项目结构与运行入口
                     if (script.isFolder) {
                         Text(
                             text = "入口文件 ➔ ${script.entryPoint}",
@@ -284,7 +288,7 @@ fun ScriptCard(script: ScriptProject) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilledIconButton(
                         onClick = { /* 立即执行 */ },
-                        enabled = isExecutable, // 🚨 如果环境依赖不满足，按钮优雅置灰防止盲目盲跑
+                        enabled = isExecutable, 
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = script.themeColor.copy(alpha = 0.1f),
                             contentColor = script.themeColor,
@@ -311,10 +315,9 @@ fun ScriptCard(script: ScriptProject) {
                 }
             }
 
-            // ─── 下半部分：🛠️ 核心优化——环境依赖智能管理舱 ───
+            // ─── 下半部分：环境依赖智能管理舱 ───
             AnimatedVisibility(visible = script.isFolder && script.dependencyStatus != DependencyStatus.None) {
                 Column {
-                    // 精细的战术分割线
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = 12.dp),
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
@@ -325,7 +328,6 @@ fun ScriptCard(script: ScriptProject) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 依赖自检状态描述
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -350,10 +352,9 @@ fun ScriptCard(script: ScriptProject) {
                             )
                         }
 
-                        // 环境交互手柄：未就绪提供一键安装，已就绪提供目录树跳转
                         if (script.dependencyStatus == DependencyStatus.Configured || script.dependencyStatus == DependencyStatus.Error) {
                             Button(
-                                onClick = { /* 后台跑 pip install / npm install 逻辑 */ },
+                                onClick = { /* 执行环境依赖安装 */ },
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
