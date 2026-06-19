@@ -1,6 +1,6 @@
 package com.example.myapplication.ui.screens
 
-import androidx.compose.animation.core.scale
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*

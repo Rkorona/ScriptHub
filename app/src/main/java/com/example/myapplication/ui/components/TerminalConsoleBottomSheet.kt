@@ -93,7 +93,7 @@ fun TerminalConsoleBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.75f) // 占屏幕 75% 高度，标准的工业终端视角
-                .padding(horizontal = 16.dp, bottom = 24.dp)
+                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
         ) {
             // ─── 终端头部控制条 ───
             Row(
