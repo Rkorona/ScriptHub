@@ -1,5 +1,6 @@
 package com.example.myapplication.ui.screens
 
+import androidx.compose.ui.draw.scale
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -267,7 +268,7 @@ fun CronTaskCard(
                         uncheckedThumbColor = MaterialTheme.colorScheme.outline,
                         uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                     ),
-                    modifier = Modifier.scaleScale(0.85f) // 适当微调尺寸让它在列表里显得精致
+                    modifier = Modifier.scale(0.85f) // 适当微调尺寸让它在列表里显得精致
                 )
             }
 
@@ -358,15 +359,3 @@ fun CronTaskCard(
     }
 }
 
-// 辅助微调组件尺寸的扩展修饰符
-private fun Modifier.scaleScale(scale: Float): Modifier = this.then(
-    modifier = Modifier.layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        layout((placeable.width * scale).toInt(), (placeable.height * scale).toInt()) {
-            placeable.placeRelativeWithLayer(0, 0) {
-                scaleX = scale
-                scaleY = scale
-            }
-        }
-    }
-)
