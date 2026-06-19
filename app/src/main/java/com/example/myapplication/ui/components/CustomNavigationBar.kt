@@ -32,29 +32,30 @@ fun ExpressiveNavigationBar(
 ) {
     NavigationBar(
         modifier = modifier.fillMaxWidth(),
-        // Expressive 风格推荐使用较矮且色彩柔和的表面容器色
-       // containerColor = MaterialTheme.colorScheme.surfaceContainer
         containerColor = MaterialTheme.colorScheme.surfaceContainer, 
     ) {
-        // 1. 主页 (Q弹放大动画)
+        // 1. 仪表盘 (Q弹放大动画)
         NavigationBarItem(
-            selected = currentRoute == "home",
-            onClick = { onNavigate("home") },
-            alwaysShowLabel = false, // 📌 核心需求1：只有选中时才显示标签
-            label = { Text("主页") },
-            icon = { AnimatedHomeIcon(selected = currentRoute == "home") }
+            selected = currentRoute == "Dashboard",
+            onClick = { onNavigate("Dashboard") },
+            alwaysShowLabel = false, // 只有选中时才显示标签
+            label = { Text("仪表盘") },
+            // 📌 修正：动画判断必须跟路由字符串 "Dashboard" 完全一致
+            icon = { AnimatedHomeIcon(selected = currentRoute == "Dashboard") }
         )
 
-        // 2. 我的 (向上顶一下的果冻动画)
+        // 2. 脚本管理 (向上顶一下的果冻动画)
         NavigationBarItem(
-            selected = currentRoute == "profile",
-            onClick = { onNavigate("profile") },
+            selected = currentRoute == "ScriptManager",
+            onClick = { onNavigate("ScriptManager") },
             alwaysShowLabel = false,
-            label = { Text("我的") },
-            icon = { AnimatedProfileIcon(selected = currentRoute == "profile") }
+            label = { Text("脚本管理") },
+            // 📌 修正：动画判断必须跟路由字符串 "ScriptManager" 完全一致
+            icon = { AnimatedProfileIcon(selected = currentRoute == "ScriptManager") }
         )
 
-        // 3. 设置 (📌 核心需求2：炫酷齿轮旋转一圈)
+        // 3. 设置 (炫酷齿轮旋转一圈)
+        // 📌 修正：全部改成小写 "settings"，与你的 MainScreen 严格对齐！
         NavigationBarItem(
             selected = currentRoute == "settings",
             onClick = { onNavigate("settings") },
@@ -79,7 +80,6 @@ fun AnimatedSettingsIcon(selected: Boolean) {
             rotation.snapTo(0f) // 先重置角度
             rotation.animateTo(
                 targetValue = 360f,
-                // Spring 物理动效：中等阻尼，带来极具“Q弹”感的旋转
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
                     stiffness = Spring.StiffnessMedium
@@ -91,13 +91,12 @@ fun AnimatedSettingsIcon(selected: Boolean) {
     Icon(
         imageVector = Icons.Filled.Settings,
         contentDescription = "Settings",
-        // 通过 graphicsLayer 动态改变旋转角度
         modifier = Modifier.graphicsLayer(rotationZ = rotation.value)
     )
 }
 
 /**
- * 主页图标：被选中时先放大再缩回（类似 Play 商店的呼吸感）
+ * 主页图标：被选中时先放大再缩回
  */
 @Composable
 fun AnimatedHomeIcon(selected: Boolean) {
@@ -106,9 +105,7 @@ fun AnimatedHomeIcon(selected: Boolean) {
     LaunchedEffect(selected) {
         if (selected) {
             scale.snapTo(1f)
-            // 先快速放大到 1.25 倍
             scale.animateTo(1.25f, animationSpec = tween(durationMillis = 100))
-            // 再用弹性动效温柔地回弹到 1.0 倍
             scale.animateTo(
                 targetValue = 1.0f,
                 animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
@@ -118,7 +115,7 @@ fun AnimatedHomeIcon(selected: Boolean) {
 
     Icon(
         imageVector = Icons.Filled.Home,
-        contentDescription = "Home",
+        contentDescription = "Dashboard",
         modifier = Modifier.graphicsLayer(scaleX = scale.value, scaleY = scale.value)
     )
 }
@@ -133,9 +130,7 @@ fun AnimatedProfileIcon(selected: Boolean) {
     LaunchedEffect(selected) {
         if (selected) {
             translationY.snapTo(0f)
-            // 向上移动 8 像素
             translationY.animateTo(-8f, animationSpec = tween(durationMillis = 100))
-            // 落下并带有一点果冻回弹
             translationY.animateTo(
                 targetValue = 0f,
                 animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
@@ -145,7 +140,7 @@ fun AnimatedProfileIcon(selected: Boolean) {
 
     Icon(
         imageVector = Icons.Filled.Person,
-        contentDescription = "Profile",
+        contentDescription = "ScriptManager",
         modifier = Modifier.graphicsLayer(translationY = translationY.value)
     )
 }
@@ -155,7 +150,7 @@ fun AnimatedProfileIcon(selected: Boolean) {
 @Preview
 @Composable
 fun ExpressiveNavigationBarPreview() {
-    var selectedTab by remember { mutableStateOf("home") }
+    var selectedTab by remember { mutableStateOf("Dashboard") }
     ExpressiveNavigationBar(
         currentRoute = selectedTab,
         onNavigate = { selectedTab = it }

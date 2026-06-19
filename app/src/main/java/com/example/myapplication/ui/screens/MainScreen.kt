@@ -21,7 +21,7 @@ fun MainScreen() {
     val titleText = when (currentRoute) {
         "Dashboard" -> "仪表盘"
         "ScriptManager" -> "脚本管理"
-        "settings" -> "系统设置"
+        "Settings" -> "系统设置"
         else -> "My Application"
     }
 
@@ -41,7 +41,7 @@ fun MainScreen() {
         when (currentRoute) {
             "Dashboard" -> DashboardScreen(contentPadding = innerPadding)
             "ScriptManager" -> ScriptManagerScreen(contentPadding = innerPadding)
-            "settings" -> SettingsScreen(innerPadding = innerPadding)
+            "Settings" -> SettingsScreen(innerPadding = innerPadding)
             
         }
     }

@@ -119,7 +119,7 @@ fun ScriptManagerScreen(
                         label = { Text(filter, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                         
                         colors = FilterChipDefaults.filterChipColors(
-                            // 📌 核心修正：这里坚决不传 enabled 和 selected（最新版 M3 内部自理）
+
                             selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
                             selectedLabelColor = MaterialTheme.colorScheme.primary,
                             containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f),
@@ -127,7 +127,7 @@ fun ScriptManagerScreen(
                         ),
                         
                         border = FilterChipDefaults.filterChipBorder(
-                            // 📌 核心保留：这里必须雷打不动地传入 enabled 和 selected（最新版 M3 强行要求）
+
                             enabled = true,
                             selected = isSelected,
                             borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,

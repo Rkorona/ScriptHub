@@ -17,7 +17,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyApplicationTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    // 📌 召唤大总管页面
+                   
                     MainScreen()
                 }
             }
