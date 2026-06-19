@@ -74,7 +74,10 @@ fun ScriptManagerScreen(
     var activeTerminalScript by remember { mutableStateOf<ScriptProject?>(null) }
 
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(bottom = contentPadding.calculateBottomPadding()),
+        
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { /* 导入动作 */ },

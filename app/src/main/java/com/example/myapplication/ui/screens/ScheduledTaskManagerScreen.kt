@@ -155,11 +155,16 @@ fun ScheduledTaskManagerScreen(
         }
     }
 
+    // ─── 🌟 升级版：新建定时任务 ModalBottomSheet ───
     if (showCreateSheet) {
         var newName by remember { mutableStateOf("") }
         var newCron by remember { mutableStateOf("*/10 * * * *") } 
-        var selectedScript by remember { mutableStateOf("crypto_monitor.py") }
-
+        
+        // 1. 引入下拉菜单的控制状态
+        var scriptDropdownExpanded by remember { mutableStateOf(false) }
+        val availableScripts = listOf("crypto_monitor.py", "backup_db.sh", "auto_commit.sh", "clean_logs.sh")
+        var selectedScript by remember { mutableStateOf(availableScripts[0]) }
+    
         ModalBottomSheet(
             onDismissRequest = { showCreateSheet = false },
             containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -173,6 +178,7 @@ fun ScheduledTaskManagerScreen(
             ) {
                 Text("配置新自动化调度", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 
+                // 任务名称输入
                 OutlinedTextField(
                     value = newName,
                     onValueChange = { newName = it },
@@ -180,7 +186,40 @@ fun ScheduledTaskManagerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
-
+    
+                // 🟢 补齐核心：目标脚本下拉选择舱
+                ExposedDropdownMenuBox(
+                    expanded = scriptDropdownExpanded,
+                    onExpandedChange = { scriptDropdownExpanded = it }
+                ) {
+                    OutlinedTextField(
+                        value = selectedScript,
+                        onValueChange = {},
+                        readOnly = true, // 只读，强制通过菜单选择
+                        label = { Text("绑定目标脚本") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = scriptDropdownExpanded) },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = scriptDropdownExpanded,
+                        onDismissRequest = { scriptDropdownExpanded = false }
+                    ) {
+                        availableScripts.forEach { script ->
+                            DropdownMenuItem(
+                                text = { Text(script, fontFamily = FontFamily.Monospace) },
+                                onClick = {
+                                    selectedScript = script
+                                    scriptDropdownExpanded = false
+                                },
+                                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                            )
+                        }
+                    }
+                }
+    
+                // Cron 表达式输入
                 OutlinedTextField(
                     value = newCron,
                     onValueChange = { newCron = it },
@@ -189,7 +228,8 @@ fun ScheduledTaskManagerScreen(
                     textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
                     shape = RoundedCornerShape(12.dp)
                 )
-
+    
+                // 人话翻译机卡片
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.06f)),
                     shape = RoundedCornerShape(12.dp),
@@ -203,14 +243,15 @@ fun ScheduledTaskManagerScreen(
                         modifier = Modifier.padding(12.dp)
                     )
                 }
-
+    
+                // 挂载按钮（此时使用的 selectedScript 就是用户真正选中的脚本了）
                 Button(
                     onClick = {
                         if (newName.isNotBlank()) {
                             tasksList.add(ScheduledTask(
                                 id = (tasksList.size + 1).toString(),
                                 name = newName,
-                                targetScript = selectedScript,
+                                targetScript = selectedScript, // 👈 动态绑定
                                 cronExpression = newCron,
                                 nextRunTime = "计算中...",
                                 lastRunResult = "从未执行",
@@ -228,6 +269,7 @@ fun ScheduledTaskManagerScreen(
             }
         }
     }
+
 
     activeTerminalTask?.let { task ->
         TerminalConsoleBottomSheet(
