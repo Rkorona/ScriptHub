@@ -14,13 +14,13 @@ import com.example.myapplication.ui.components.ExpressiveTopAppBar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
-    var currentRoute by remember { mutableStateOf("home") }
+    var currentRoute by remember { mutableStateOf("Dashboard") }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
 
     // 根据不同页面，给顶部栏换不同的标题
     val titleText = when (currentRoute) {
-        "home" -> "Expressive Hub"
-        "profile" -> "个人中心"
+        "Dashboard" -> "仪表盘"
+        "ScriptManager" -> "脚本管理"
         "settings" -> "系统设置"
         else -> "My Application"
     }
@@ -39,10 +39,10 @@ fun MainScreen() {
     ) { innerPadding ->
         // 📌 核心路由逻辑：根据选中的标签，渲染对应的独立页面文件！
         when (currentRoute) {
-            "home" -> DashboardScreen(contentPadding = innerPadding)
-
+            "Dashboard" -> DashboardScreen(contentPadding = innerPadding)
+            "ScriptManager" -> ScriptManagerScreen(innerPadding = innerPadding)
             "settings" -> SettingsScreen(innerPadding = innerPadding)
-            "profile" -> HomeScreen(innerPadding = innerPadding) // 暂时用同一个代替
+            
         }
     }
 }
