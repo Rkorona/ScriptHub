@@ -43,7 +43,8 @@ object TermuxRunner {
             putExtra("com.termux.RUN_COMMAND_PATH", executablePath)
             // -lc 确保加载 Termux 完整的环境变量（包含已装好的 npm/pip 环境）
             putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", fullBashCommand))
-            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true) // 静默后台运行，不弹黑框
+            // putExtra("com.termux.RUN_COMMAND_BACKGROUND", true) // 静默后台运行，不弹黑框
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
         }
 
         try {
