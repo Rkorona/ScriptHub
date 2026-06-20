@@ -1,6 +1,8 @@
 // app_template/app/src/main/java/com/example/myapplication/ui/screens/MainScreen.kt
 package com.example.myapplication.ui.screens
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.content.Intent
 import android.net.Uri
@@ -49,7 +51,11 @@ fun MainScreen() {
         }
         if (hasFilePermission) {
             // 权限通过，顺便初始化物理目录结构
-            FileHelper.initDirectories()
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+            scope.launch(Dispatchers.IO) {
+                FileHelper.initDirectories()
+            }
         }
     }
 
