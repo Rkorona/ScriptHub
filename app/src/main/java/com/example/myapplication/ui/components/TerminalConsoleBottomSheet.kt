@@ -96,7 +96,7 @@ fun TerminalConsoleBottomSheet(
                 logs.add(LogLine("[EXEC] 调度指令已派发至 Termux 引擎，等待物理管道连通...", Color(0xFFA855F7)))
 
                 // 设置连接超时时间为 5 秒，防止 Termux 因权限未给等问题导致 App 无限假死
-                serverSocket.soTimeout = 5000
+                serverSocket.soTimeout = 15000
                 val clientSocket = serverSocket.accept()
                 
                 withContext(Dispatchers.Main) {
