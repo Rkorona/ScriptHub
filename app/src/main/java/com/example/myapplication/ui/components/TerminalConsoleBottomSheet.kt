@@ -1,5 +1,4 @@
 // app_template/app/src/main/java/com/example/myapplication/ui/components/TerminalConsoleBottomSheet.kt
-
 package com.example.myapplication.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -19,14 +18,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.data.AppDatabase
+import com.example.myapplication.utils.TermuxRunner
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.ServerSocket
 
-// 日志数据模型
 data class LogLine(val text: String, val color: Color = Color(0xFF4ADE80))
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,48 +43,101 @@ fun TerminalConsoleBottomSheet(
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val context = LocalContext.current
     
-    // 动态日志流状态
+    // 动态日志流
     val logs = remember { mutableStateListOf<LogLine>() }
     var isRunning by remember { mutableStateOf(true) }
 
-    // 🔬 核心：模拟极客级后台日志流式输出
+    // 初始化本地 Room 数据库以便自动获取运行所需的脚本属性（类型、是否是工程）
+    val db = remember { AppDatabase.getDatabase(context) }
+    val scriptDao = remember { db.scriptDao() }
+
+    // 🔬 极客级本地 Socket 日志监听监听器
     LaunchedEffect(taskName) {
         logs.add(LogLine("[INFO] 初始化自动化执行管线...", Color(0xFF38BDF8)))
-        delay(400)
-        logs.add(LogLine("[INFO] 正在载入核心武器库环境: Node.js / Python3环境检测通过", Color(0xFF38BDF8)))
-        delay(300)
-        logs.add(LogLine("[EXEC] 正在触发目标脚本: $scriptName", Color(0xFFA855F7)))
-        delay(600)
         
-        val mockSteps = listOf(
-            "[INFO] 连接远端数据库主机 [netcup_root_v4] 成功...",
-            "[INFO] 开始同步战术审计残留残渣...",
-            "[SUCCESS] 抓取目标 API 核心包数据: 200 OK",
-            "[DATA] { status: \"success\", affected_rows: 42, latency: \"182ms\" }",
-            "[WARN] 发现轻微内存抖动，触发垃圾搜集回收机制...",
-            "[SUCCESS] 临时缓存已清理，物理空间释放 12.4MB"
-        )
-
-        for (step in mockSteps) {
-            val color = when {
-                step.contains("[SUCCESS]") -> Color(0xFF22C55E)
-                step.contains("[WARN]") -> Color(0xFFEAB308)
-                else -> Color(0xFF4ADE80)
-            }
-            logs.add(LogLine(step, color))
-            delay(500) // 模拟流式延迟
+        // 自动对齐：优先用脚本名去数据库查匹配，如果没有就用任务名去查
+        val scriptEntity = withContext(Dispatchers.IO) {
+            scriptDao.getByName(scriptName) ?: scriptDao.getByName(taskName)
         }
 
-        delay(400)
-        logs.add(LogLine("[INFO] ──────────────────────────────────────────", Color.Gray))
-        logs.add(LogLine("[SUCCESS] 战术任务 [$taskName] 顺利跑通！进程正常退出 (Exit Code: 0)", Color(0xFF22C55E)))
-        isRunning = false
+        if (scriptEntity == null) {
+            logs.add(LogLine("[ERROR] 未在本地数据库中检测到该脚本的环境映射缓存", Color(0xFFF87171)))
+            logs.add(LogLine("[INFO] 请确保脚本已在《脚本管理》物理对齐扫描完毕", Color(0xFF38BDF8)))
+            isRunning = false
+            return@LaunchedEffect
+        }
+
+        logs.add(LogLine("[INFO] 检测运行环境: ${scriptEntity.type} (物理扫描正常)...", Color(0xFF38BDF8)))
+
+        // 在 IO 线程启动 Socket 拦截服务器
+        withContext(Dispatchers.IO) {
+            var serverSocket: ServerSocket? = null
+            try {
+                // 监听本地 9090 端口
+                serverSocket = ServerSocket(9090)
+                
+                // 给 Termux 下发执行指令，并将输出重定向回到本地 9090 端口
+                TermuxRunner.executeScript(
+                    context = context,
+                    scriptName = scriptEntity.name,
+                    isFolder = scriptEntity.isFolder,
+                    entryPoint = scriptEntity.entryPoint,
+                    scriptType = scriptEntity.type,
+                    socketPort = 9090
+                )
+
+                logs.add(LogLine("[EXEC] 调度指令已派发至 Termux 引擎，等待物理管道连通...", Color(0xFFA855F7)))
+
+                // 设置连接超时时间为 5 秒，防止 Termux 因权限未给等问题导致 App 无限假死
+                serverSocket.soTimeout = 5000
+                val clientSocket = serverSocket.accept()
+                
+                withContext(Dispatchers.Main) {
+                    logs.add(LogLine("[INFO] 物理数据管道双向连通建立成功，开始承接运行日志 ➔", Color(0xFF22C55E)))
+                }
+
+                val reader = BufferedReader(InputStreamReader(clientSocket.inputStream))
+                var line: String?
+                // 核心循环：实时一行行读取 Termux 吐回来的真实数据
+                while (reader.readLine().also { line = it } != null) {
+                    val finalLine = line!!
+                    
+                    // 基于语义色解析（红/黄/绿/蓝）
+                    val logColor = when {
+                        finalLine.contains("error", ignoreCase = true) || finalLine.contains("failed", ignoreCase = true) -> Color(0xFFF87171)
+                        finalLine.contains("success", ignoreCase = true) || finalLine.contains("installed", ignoreCase = true) -> Color(0xFF4ADE80)
+                        finalLine.contains("warning", ignoreCase = true) -> Color(0xFFEAB308)
+                        else -> Color(0xFF38BDF8)
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        logs.add(LogLine(finalLine, logColor))
+                    }
+                }
+
+            } catch (e: java.io.InterruptedIOException) {
+                withContext(Dispatchers.Main) {
+                    logs.add(LogLine("[WARN] 管道连通超时：请检查 Termux 后台是否在线，且已按照教程授予 App 跨应用调用权限", Color(0xFFEAB308)))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    logs.add(LogLine("[ERROR] 管道拦截异常: ${e.message}", Color(0xFFF87171)))
+                }
+            } finally {
+                serverSocket?.close()
+                withContext(Dispatchers.Main) {
+                    isRunning = false
+                    logs.add(LogLine("[INFO] ──────────────────────────────────────────", Color.Gray))
+                    logs.add(LogLine("[FINISHED] 自动化引擎完成调度。进程正常退出 (Exit Code: 0)", Color(0xFF22C55E)))
+                }
+            }
+        }
     }
 
-    // 📜 锁底自动流式滚动：只要有新日志，立刻无条件滚到最底下
+    // 锁底自动滑动流：只要有新日志加入，瞬间丝滑滚到最底端
     LaunchedEffect(logs.size) {
         if (logs.isNotEmpty()) {
             listState.animateScrollToItem(logs.size - 1)
@@ -88,16 +147,15 @@ fun TerminalConsoleBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF090D16), // 纯正黑客暗黑夜幕蓝
+        containerColor = Color(0xFF090D16),
         dragHandle = { BottomSheetDefaults.DragHandle(color = Color.DarkGray) }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.75f) // 占屏幕 75% 高度，标准的工业终端视角
+                .fillMaxHeight(0.75f)
                 .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
         ) {
-            // ─── 终端头部控制条 ───
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -119,7 +177,6 @@ fun TerminalConsoleBottomSheet(
                     )
                 }
                 
-                // 状态呼吸灯
                 Surface(
                     color = if (isRunning) Color(0xFFEAB308).copy(alpha = 0.2f) else Color(0xFF22C55E).copy(alpha = 0.2f),
                     shape = RoundedCornerShape(20.dp)
@@ -136,7 +193,6 @@ fun TerminalConsoleBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ─── 黑客级命令行主体 ───
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -153,7 +209,7 @@ fun TerminalConsoleBottomSheet(
                         Text(
                             text = log.text,
                             color = log.color,
-                            fontFamily = FontFamily.Monospace, // 极客专属等宽字体
+                            fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
                             lineHeight = 16.sp
                         )
