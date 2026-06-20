@@ -33,6 +33,7 @@ fun MainScreen() {
     val context = LocalContext.current
     var currentRoute by remember { mutableStateOf("Dashboard") }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     // ─── 权限阻断状态 ───
     var hasFilePermission by remember { mutableStateOf(true) }
@@ -51,8 +52,7 @@ fun MainScreen() {
         }
         if (hasFilePermission) {
             // 权限通过，顺便初始化物理目录结构
-            val scope = androidx.compose.runtime.rememberCoroutineScope()
-
+            
             scope.launch(Dispatchers.IO) {
                 FileHelper.initDirectories()
             }
