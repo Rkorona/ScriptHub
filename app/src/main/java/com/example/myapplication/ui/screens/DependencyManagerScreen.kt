@@ -1,6 +1,9 @@
 // app_template/app/src/main/java/com/example/myapplication/ui/screens/DependencyManagerScreen.kt
 package com.example.myapplication.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,8 +25,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.DependencyEntity
 import com.example.myapplication.viewmodel.ConfigViewModel
+import java.util.UUID
 
-// 枚举保留，用于数据库类型映射
+// 枚举保留
 enum class DepType { NodeJS, Python3, Linux }
 enum class DepStatus { Installed, Installing, Failed }
 
@@ -31,17 +35,19 @@ enum class DepStatus { Installed, Installing, Failed }
 @Composable
 fun DependencyManagerScreen(
     contentPadding: PaddingValues = PaddingValues(),
-    viewModel: ConfigViewModel = viewModel() // 👈 注入 ViewModel
+    viewModel: ConfigViewModel = viewModel()
 ) {
     var selectedTab by remember { mutableStateOf(DepType.NodeJS) }
-    
-    // 💡 核心魔法：直接监听数据库中的依赖流
+    var searchQuery by remember { mutableStateOf("") }
     val deps by viewModel.depsList.collectAsStateWithLifecycle()
+
+    // ─── 依赖安装配置弹窗状态 ───
+    var showInstaller by remember { mutableStateOf(false) }
+    var editingDep by remember { mutableStateOf<DependencyEntity?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().padding(top = contentPadding.calculateTopPadding())) {
             
-            // M3 1.5 新特性 SecondaryTabRow：更富有表现力的滑块标签
             SecondaryTabRow(
                 selectedTabIndex = selectedTab.ordinal,
                 containerColor = Color.Transparent,
@@ -62,32 +68,70 @@ fun DependencyManagerScreen(
                 }
             }
 
-            LazyColumn(
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 120.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // 根据当前选中的 Tab 过滤数据库数据
-                val filteredDeps = deps.filter { it.type == selectedTab }
-                
-                items(filteredDeps, key = { it.id }) { dep ->
-                    DependencyCard(
-                        dep = dep,
-                        onDelete = { viewModel.deleteDependency(dep) } // 👈 触发数据库删除
+            // 搜索框
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("搜索已配置的 ${selectedTab.name} 依赖...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                    trailingIcon = {
+                        AnimatedVisibility(visible = searchQuery.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
+                            IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, contentDescription = "清除") }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(100),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent
                     )
+                )
+            }
+
+            val filteredDeps = deps.filter { it.type == selectedTab && it.name.contains(searchQuery, true) }
+
+            if (filteredDeps.isEmpty()) {
+                // 依赖项空状态
+                Column(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(modifier = Modifier.size(72.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(30.dp))
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("无匹配的 ${selectedTab.name} 依赖", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("执行脚本需要导入的依赖包可在本页统一调度安装", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(filteredDeps, key = { it.id }) { dep ->
+                        DependencyCard(
+                            dep = dep,
+                            onEdit = {
+                                editingDep = dep
+                                showInstaller = true // 唤醒编辑修改弹窗
+                            },
+                            onDelete = { viewModel.deleteDependency(dep) }
+                        )
+                    }
                 }
             }
         }
 
         ExtendedFloatingActionButton(
             onClick = { 
-                // 🛠 测试：往数据库插入一条新依赖，当前是在哪个Tab下，就插入哪个类型的依赖
-                viewModel.addDependency(
-                    DependencyEntity(
-                        name = "pkg_${System.currentTimeMillis().toString().takeLast(4)}",
-                        type = selectedTab,
-                        status = DepStatus.Installing // 默认插入为正在安装状态
-                    )
-                )
+                editingDep = null // 全新安装
+                showInstaller = true
             },
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -102,11 +146,25 @@ fun DependencyManagerScreen(
             Text("安装新依赖", fontWeight = FontWeight.Bold)
         }
     }
+
+    // ─── 依赖安装/配置弹窗 ───
+    if (showInstaller) {
+        DependencyInstallerSheet(
+            existing = editingDep,
+            defaultType = selectedTab, // 默认选中的环境契合当前的 Tab
+            onDismiss = { showInstaller = false },
+            onSave = { savedDep ->
+                viewModel.addOrUpdateDependency(savedDep)
+                showInstaller = false
+            }
+        )
+    }
 }
 
 @Composable
 private fun DependencyCard(
     dep: DependencyEntity,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -116,15 +174,11 @@ private fun DependencyCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape),
+                modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Extension, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -138,7 +192,6 @@ private fun DependencyCard(
                 }
             }
 
-            // M3 Tonal Status Indicator
             val (text, color, icon) = when (dep.status) {
                 DepStatus.Installed -> Triple("已安装", Color(0xFF22C55E), Icons.Default.CheckCircle)
                 DepStatus.Installing -> Triple("安装中", MaterialTheme.colorScheme.tertiary, Icons.Default.Sync)
@@ -159,16 +212,18 @@ private fun DependencyCard(
 
             Spacer(Modifier.width(8.dp))
 
-            // 更多操作下拉菜单
             Box {
                 IconButton(onClick = { expanded = true }) {
                     Icon(Icons.Default.MoreVert, contentDescription = "更多选项", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     DropdownMenuItem(
-                        text = { Text("重新安装") },
+                        text = { Text("编辑/重新安装") },
                         leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
-                        onClick = { expanded = false /* TODO */ }
+                        onClick = { 
+                            expanded = false
+                            onEdit() // 触发编辑修改
+                        }
                     )
                     HorizontalDivider()
                     DropdownMenuItem(
@@ -181,6 +236,99 @@ private fun DependencyCard(
                     )
                 }
             }
+        }
+    }
+}
+
+// ─── 依赖包安装表单 ───
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DependencyInstallerSheet(
+    existing: DependencyEntity?,
+    defaultType: DepType,
+    onDismiss: () -> Unit,
+    onSave: (DependencyEntity) -> Unit
+) {
+    var name by remember { mutableStateOf(existing?.name ?: "") }
+    var version by remember { mutableStateOf(existing?.version ?: "latest") }
+    var selectedType by remember { mutableStateOf(existing?.type ?: defaultType) }
+
+    val isValid = name.isNotBlank()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = if (existing == null) "安装新依赖" else "变更依赖配置",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            // 环境选择（分段单选按钮组合）
+            Column {
+                Text("运行环境 (运行时)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(12.dp)).padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    DepType.values().forEach { type ->
+                        val isSelected = selectedType == type
+                        Button(
+                            onClick = { selectedType = type },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                            ),
+                            contentPadding = PaddingValues(vertical = 10.dp)
+                        ) {
+                            Text(type.name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.trim() },
+                label = { Text("依赖包名") },
+                placeholder = { Text("例如: axios 或 requests") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            OutlinedTextField(
+                value = version,
+                onValueChange = { version = it.trim() },
+                label = { Text("目标版本 (填 latest 则采用最新版)") },
+                placeholder = { Text("例如: 1.2.0 或 latest") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Button(
+                onClick = {
+                    val saved = existing?.copy(name = name, type = selectedType, version = version, status = DepStatus.Installing)
+                        ?: DependencyEntity(name = name, type = selectedType, version = version, status = DepStatus.Installing)
+                    onSave(saved)
+                },
+                enabled = isValid,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(if (existing == null) "挂载安装" else "确认修改并重装", fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
