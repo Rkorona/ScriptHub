@@ -26,14 +26,14 @@ import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.components.ExpressiveNavigationBar
 import com.example.myapplication.ui.components.ExpressiveTopAppBar
 import com.example.myapplication.utils.FileHelper
-
+import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen() {
     val context = LocalContext.current
     var currentRoute by remember { mutableStateOf("Dashboard") }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
     // ─── 权限阻断状态 ───
     var hasFilePermission by remember { mutableStateOf(true) }
