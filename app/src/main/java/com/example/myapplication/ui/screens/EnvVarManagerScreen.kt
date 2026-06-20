@@ -89,7 +89,7 @@ fun EnvVarManagerScreen(
                             (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                                 .setPrimaryClip(ClipData.newPlainText("EnvValue", env.value))
                             Toast.makeText(context, "已复制 ${env.name}", Toast.LENGTH_SHORT).show()
-                        }
+                        },
                         onDelete = { viewModel.deleteEnv(env) }
                     )
                 }
