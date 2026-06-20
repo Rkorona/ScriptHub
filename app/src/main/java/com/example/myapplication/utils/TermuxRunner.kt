@@ -3,6 +3,7 @@ package com.example.myapplication.utils
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 
 object TermuxRunner {
     private const val TERMUX_SERVICE = "com.termux.app.RunCommandService"
@@ -10,7 +11,7 @@ object TermuxRunner {
     private const val ACTION_RUN_COMMAND = "com.termux.RUN_COMMAND"
 
     /**
-     * 调用 Termux 引擎执行脚本，并将标准输出与错误重定向到本地 socket 端口
+     * 自动执行脚本的主引擎
      */
     fun executeScript(
         context: Context,
@@ -23,7 +24,7 @@ object TermuxRunner {
         // Termux 默认标准 Shell 路径
         val executablePath = "/data/data/com.termux/files/usr/bin/bash"
         
-        // 判定解析器命令
+        // 判定编译器
         val runCmd = when (scriptType) {
             "Python" -> "python3"
             "Node.js" -> "node"
@@ -31,24 +32,30 @@ object TermuxRunner {
             else -> "bash"
         }
 
-        // 拼接执行目标：单文件 vs 文件夹项目入口
+        // 拼接目标脚本
         val targetFile = if (isFolder) "$scriptName/$entryPoint" else scriptName
         
-        // 核心黑科技管道指令：
-        // 2>&1 将标准错误和标准输出整合，再通过 | nc (netcat) 发送到本地 App 开放的端口上
-        val fullBashCommand = "cd /sdcard/QLPanel/scripts && $runCmd $targetFile 2>&1 | nc 127.0.0.1 $socketPort"
+        // 极客加固指令：显式强制注入 PATH 变量（防后台环境变量丢失），并通过 nc 实时回传端口
+        val fullBashCommand = """
+            export PATH=/data/data/com.termux/files/usr/bin:${"$"}PATH && \
+            cd /sdcard/QLPanel/scripts && \
+            $runCmd $targetFile 2>&1 | nc 127.0.0.1 $socketPort
+        """.trimIndent()
 
         val intent = Intent(ACTION_RUN_COMMAND).apply {
             setClassName(TERMUX_PACKAGE, "$TERMUX_PACKAGE.$TERMUX_SERVICE")
             putExtra("com.termux.RUN_COMMAND_PATH", executablePath)
-            // -lc 确保加载 Termux 完整的环境变量（包含已装好的 npm/pip 环境）
-            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-lc", fullBashCommand))
-            // putExtra("com.termux.RUN_COMMAND_BACKGROUND", true) // 静默后台运行，不弹黑框
-            putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
+            putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", fullBashCommand)) // 改为 -c
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true) // 可以放回后台静默运行了
         }
 
         try {
-            context.startService(intent)
+            // 👈 核心安全修改：在 Android 8.0/14+ 系统上，强制使用 startForegroundService 穿透系统封锁
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
