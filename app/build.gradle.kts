@@ -60,6 +60,9 @@ dependencies {
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.1")
 
+    // Splash Screen API (backport to Android 10+)
+    implementation("androidx.core:core-splashscreen:1.0.1")
+
     // ViewModel 和 生命周期
     
     implementation(libs.androidx.lifecycle.viewmodel.compose) // ViewModel Compose 支
