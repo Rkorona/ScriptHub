@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.myapplication"
+    namespace = "com.scripthub.app"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.myapplication"
+        applicationId = "com.scripthub.app"
         minSdk = 30
         targetSdk = 37
         versionCode = 1
