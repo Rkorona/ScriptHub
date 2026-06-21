@@ -7,6 +7,7 @@ import com.example.myapplication.data.RunLogEntity
 import com.example.myapplication.utils.TermuxRunner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.ServerSocket
@@ -25,6 +26,19 @@ object ScheduledScriptExecutor {
     ) = withContext(Dispatchers.IO) {
         val db = AppDatabase.getDatabase(context)
         val runLogDao = db.runLogDao()
+
+        // 读取已启用的环境变量
+        val envVars = try {
+            db.envVarDao().getAll().first()
+                .filter { it.isEnabled }
+                .associate { it.name to it.value }
+        } catch (e: Exception) {
+            Log.w(TAG, "[$taskName] 读取环境变量失败: ${e.message}")
+            emptyMap()
+        }
+        if (envVars.isNotEmpty()) {
+            Log.i(TAG, "[$taskName] 注入 ${envVars.size} 个环境变量: ${envVars.keys.joinToString(", ")}")
+        }
 
         val startTime = System.currentTimeMillis()
         val rawLines = mutableListOf<String>()
@@ -45,7 +59,8 @@ object ScheduledScriptExecutor {
                 isFolder   = false,
                 entryPoint = "",
                 scriptType = scriptType,
-                socketPort = allocatedPort
+                socketPort = allocatedPort,
+                envVars    = envVars
             )
 
             val clientSocket = serverSocket.accept()

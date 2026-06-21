@@ -32,6 +32,7 @@ import com.example.myapplication.ui.theme.TerminalExec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.ServerSocket
@@ -78,6 +79,16 @@ fun TerminalConsoleBottomSheet(
 
         logs.add(LogLine("[INFO] 检测运行环境: ${scriptEntity.type} (物理扫描正常)...", TerminalInfo))
 
+        // 读取已启用的环境变量
+        val envVars = withContext(Dispatchers.IO) {
+            db.envVarDao().getAll().first()
+                .filter { it.isEnabled }
+                .associate { it.name to it.value }
+        }
+        if (envVars.isNotEmpty()) {
+            logs.add(LogLine("[INFO] 已注入 ${envVars.size} 个环境变量: ${envVars.keys.joinToString(", ")}", TerminalInfo))
+        }
+
         val startTime = System.currentTimeMillis()
         val rawLines = mutableListOf<String>()
         var exitCode = -1
@@ -104,7 +115,8 @@ fun TerminalConsoleBottomSheet(
                     isFolder   = scriptEntity.isFolder,
                     entryPoint = scriptEntity.entryPoint,
                     scriptType = scriptEntity.type,
-                    socketPort = allocatedPort
+                    socketPort = allocatedPort,
+                    envVars    = envVars
                 )
 
                 withContext(Dispatchers.Main) {
