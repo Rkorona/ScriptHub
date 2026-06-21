@@ -1,4 +1,3 @@
-// app_template/app/src/main/java/com/example/myapplication/ui/components/TerminalConsoleBottomSheet.kt
 package com.example.myapplication.ui.components
 
 import androidx.compose.foundation.background
@@ -8,11 +7,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -26,8 +28,6 @@ import com.example.myapplication.ui.theme.TerminalSuccess
 import com.example.myapplication.ui.theme.TerminalError
 import com.example.myapplication.ui.theme.TerminalWarn
 import com.example.myapplication.ui.theme.TerminalExec
-import com.example.myapplication.ui.theme.TerminalSheetBg
-import com.example.myapplication.ui.theme.EditorSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -48,19 +48,19 @@ fun TerminalConsoleBottomSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val listState = rememberLazyListState()
     val context = LocalContext.current
-    
-    // 动态日志流
+
     val logs = remember { mutableStateListOf<LogLine>() }
     var isRunning by remember { mutableStateOf(true) }
 
-    // 初始化本地 Room 数据库
     val db = remember { AppDatabase.getDatabase(context) }
     val scriptDao = remember { db.scriptDao() }
 
-    // 🔬 极客级本地 Socket 日志监听监听器
+    // 提前捕获主题色，供协程内部（非 Composable 上下文）使用
+    val separatorColor = MaterialTheme.colorScheme.outlineVariant
+
     LaunchedEffect(taskName) {
         logs.add(LogLine("[INFO] 初始化自动化执行管线...", TerminalInfo))
-        
+
         val scriptEntity = withContext(Dispatchers.IO) {
             scriptDao.getByName(scriptName) ?: scriptDao.getByName(taskName)
         }
@@ -74,23 +74,22 @@ fun TerminalConsoleBottomSheet(
 
         logs.add(LogLine("[INFO] 检测运行环境: ${scriptEntity.type} (物理扫描正常)...", TerminalInfo))
 
-        // 在 IO 线程启动 Socket 拦截服务器
         withContext(Dispatchers.IO) {
             var serverSocket: ServerSocket? = null
             var clientSocket: Socket? = null
             var reader: BufferedReader? = null
-            
+
             try {
-                // 1. 【核心改进：动态空闲端口】 传入端口 0 意味着让系统自动分配一个当前绝对可用的空闲端口
                 serverSocket = ServerSocket(0).apply {
                     reuseAddress = true
-                    soTimeout = 15000 // 15 秒连接超时
+                    soTimeout = 15000
                 }
                 val allocatedPort = serverSocket.localPort
-                
-                logs.add(LogLine("[INFO] 已分配本地物理管道端口: $allocatedPort", TerminalInfo))
 
-                // 2. 启动 Termux 并将动态分配的端口传递过去
+                withContext(Dispatchers.Main) {
+                    logs.add(LogLine("[INFO] 已分配本地物理管道端口: $allocatedPort", TerminalInfo))
+                }
+
                 TermuxRunner.executeScript(
                     context = context,
                     scriptName = scriptEntity.name,
@@ -100,18 +99,19 @@ fun TerminalConsoleBottomSheet(
                     socketPort = allocatedPort
                 )
 
-                logs.add(LogLine("[EXEC] 调度指令已派发至 Termux 引擎，等待物理管道连通...", TerminalExec))
+                withContext(Dispatchers.Main) {
+                    logs.add(LogLine("[EXEC] 调度指令已派发至 Termux 引擎，等待物理管道连通...", TerminalExec))
+                }
 
-                // 等待连接
                 clientSocket = serverSocket.accept()
-                
+
                 withContext(Dispatchers.Main) {
                     logs.add(LogLine("[INFO] 物理数据管道双向连通建立成功，开始承接运行日志 ➔", TerminalSuccess))
                 }
 
                 reader = BufferedReader(InputStreamReader(clientSocket.inputStream))
                 var line: String?
-                
+
                 while (reader.readLine().also { line = it } != null) {
                     val finalLine = line!!
                     val logColor = when {
@@ -120,7 +120,6 @@ fun TerminalConsoleBottomSheet(
                         finalLine.contains("warning", ignoreCase = true) -> TerminalWarn
                         else -> TerminalInfo
                     }
-
                     withContext(Dispatchers.Main) {
                         logs.add(LogLine(finalLine, logColor))
                     }
@@ -135,7 +134,6 @@ fun TerminalConsoleBottomSheet(
                     logs.add(LogLine("[ERROR] 管道拦截异常: ${e.message}", TerminalError))
                 }
             } finally {
-                // 3. 【核心改进：防内存与端口泄漏】使用 NonCancellable 确保即使协程被取消，清理代码也一定会完整执行
                 withContext(NonCancellable) {
                     try {
                         reader?.close()
@@ -146,7 +144,7 @@ fun TerminalConsoleBottomSheet(
                     }
                     withContext(Dispatchers.Main) {
                         isRunning = false
-                        logs.add(LogLine("[INFO] ──────────────────────────────────────────", Color.Gray))
+                        logs.add(LogLine("─".repeat(48), separatorColor))
                         logs.add(LogLine("[FINISHED] 自动化引擎完成调度。进程正常退出 (Exit Code: 0)", TerminalSuccess))
                     }
                 }
@@ -154,73 +152,136 @@ fun TerminalConsoleBottomSheet(
         }
     }
 
-    // 锁底自动滑动流
     LaunchedEffect(logs.size) {
-        if (logs.isNotEmpty()) {
-            listState.animateScrollToItem(logs.size - 1)
-        }
+        if (logs.isNotEmpty()) listState.animateScrollToItem(logs.size - 1)
     }
+
+    val colors = MaterialTheme.colorScheme
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = TerminalSheetBg,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Color.DarkGray) }
+        containerColor = colors.surfaceContainerLow,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(color = colors.onSurfaceVariant.copy(alpha = 0.4f))
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.75f)
-                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp)
+                .fillMaxHeight(0.8f)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
         ) {
+            // ── 顶部标题栏 ──
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Terminal, 
-                        contentDescription = null, 
-                        tint = TerminalInfo,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "终端审计舱: $taskName",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                
-                Surface(
-                    color = if (isRunning) TerminalWarn.copy(alpha = 0.2f) else TerminalSuccess.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(20.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = if (isRunning) "• RUNNING" else "• FINISHED",
-                        color = if (isRunning) TerminalWarn else TerminalSuccess,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Surface(
+                        color = colors.primaryContainer,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Terminal,
+                            contentDescription = null,
+                            tint = colors.onPrimaryContainer,
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = taskName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = colors.onSurface
+                        )
+                        Text(
+                            text = "终端执行日志",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 状态徽章
+                    Surface(
+                        color = if (isRunning)
+                            TerminalWarn.copy(alpha = 0.15f)
+                        else
+                            TerminalSuccess.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Circle,
+                                contentDescription = null,
+                                tint = if (isRunning) TerminalWarn else TerminalSuccess,
+                                modifier = Modifier.size(7.dp)
+                            )
+                            Text(
+                                text = if (isRunning) "RUNNING" else "FINISHED",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRunning) TerminalWarn else TerminalSuccess
+                            )
+                        }
+                    }
+
+                    // 关闭按钮
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "关闭",
+                            tint = colors.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
+            // ── 日志计数 ──
+            Text(
+                text = "${logs.size} 条日志",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // ── 日志区域 ──
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(EditorSurface, shape = RoundedCornerShape(16.dp))
-                    .padding(12.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.surfaceContainer)
             ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(logs) { log ->
                         Text(
@@ -228,9 +289,11 @@ fun TerminalConsoleBottomSheet(
                             color = log.color,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
-                            lineHeight = 16.sp
+                            lineHeight = 18.sp
                         )
                     }
+                    // 占位，确保最后一条日志不被遮挡
+                    item { Spacer(Modifier.height(8.dp)) }
                 }
             }
         }

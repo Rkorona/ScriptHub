@@ -106,12 +106,6 @@ val TerminalExec    = Color(0xFFA78BFA)
 // 运行中状态绿点
 val StatusRunning   = Color(0xFF4ADE80)
 
-// 代码编辑器专属深色（保留极客感，换为薄荷暗调）
-val EditorBackground    = Color(0xFF0A120F)
-val EditorSurface       = Color(0xFF050D0B)
-val EditorTextColor     = TerminalInfo
-val TerminalSheetBg     = Color(0xFF0A120F)
-
 // 脚本类型徽章颜色（语义固定，不随主题翻转）
 val TypeColorPython = Color(0xFF5EEAD4)   // 薄荷青（与主题呼应）
 val TypeColorShell  = Color(0xFF4ADE80)   // 绿
