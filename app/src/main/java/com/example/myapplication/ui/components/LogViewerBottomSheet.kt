@@ -1,40 +1,38 @@
 package com.example.myapplication.ui.components
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplication.data.AppDatabase
 import com.example.myapplication.data.RunLogEntity
 import com.example.myapplication.ui.theme.TerminalError
-import com.example.myapplication.ui.theme.TerminalInfo
 import com.example.myapplication.ui.theme.TerminalSuccess
-import com.example.myapplication.ui.theme.LogCardBg
+import com.example.myapplication.ui.theme.TerminalWarn
+import com.example.myapplication.ui.theme.TerminalInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -56,6 +54,7 @@ fun LogViewerBottomSheet(
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
     var pendingClearAll by remember { mutableStateOf(false) }
+    var selectedLog by remember { mutableStateOf<RunLogEntity?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -141,7 +140,6 @@ fun LogViewerBottomSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             if (logs.isEmpty()) {
-                // 空状态
                 Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
@@ -166,7 +164,7 @@ fun LogViewerBottomSheet(
                             "点击脚本卡片的「立即执行」按钮运行脚本\n执行完成后日志将自动保存在这里",
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                             fontSize = 12.sp,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            textAlign = TextAlign.Center,
                             lineHeight = 18.sp
                         )
                     }
@@ -178,11 +176,23 @@ fun LogViewerBottomSheet(
                     contentPadding = PaddingValues(bottom = 8.dp)
                 ) {
                     items(logs, key = { it.id }) { log ->
-                        RunLogCard(log = log)
+                        RunLogCard(
+                            log = log,
+                            onClick = { selectedLog = log }
+                        )
                     }
                 }
             }
         }
+    }
+
+    // 日志详情底部抽屉
+    selectedLog?.let { log ->
+        LogDetailBottomSheet(
+            log = log,
+            scriptName = scriptName,
+            onDismiss = { selectedLog = null }
+        )
     }
 
     // 清空确认弹窗
@@ -204,10 +214,238 @@ fun LogViewerBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RunLogCard(log: RunLogEntity) {
-    var expanded by remember { mutableStateOf(false) }
+private fun LogDetailBottomSheet(
+    log: RunLogEntity,
+    scriptName: String,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val listState = rememberLazyListState()
 
+    val timeLabel = remember(log.startTime) {
+        SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(Date(log.startTime))
+    }
+    val durationLabel = when {
+        log.durationMs <= 0L -> "时长未知"
+        log.durationMs < 1000L -> "${log.durationMs}ms"
+        else -> String.format("%.2fs", log.durationMs / 1000.0)
+    }
+    val isSuccess = log.exitCode == 0
+    val isUnknown = log.exitCode == -1
+    val statusColor = when {
+        isSuccess -> TerminalSuccess
+        isUnknown -> TerminalWarn
+        else -> TerminalError
+    }
+    val statusLabel = when (log.exitCode) {
+        0 -> "成功"
+        -1 -> "未知"
+        else -> "失败"
+    }
+
+    val logLines = remember(log.logText) {
+        if (log.logText.isBlank()) emptyList()
+        else log.logText.split("\n")
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        dragHandle = {
+            BottomSheetDefaults.DragHandle(
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.88f)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
+                .navigationBarsPadding()
+        ) {
+            // ── 顶部标题栏 ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        color = statusColor.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Terminal,
+                            contentDescription = null,
+                            tint = statusColor,
+                            modifier = Modifier.padding(8.dp).size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = scriptName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = timeLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "关闭",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ── 元数据摘要卡片 ──
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    MetaStat(label = "状态", value = statusLabel, valueColor = statusColor)
+                    VerticalDivider(
+                        modifier = Modifier.height(32.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                    MetaStat(
+                        label = "退出码",
+                        value = if (log.exitCode == -1) "N/A" else log.exitCode.toString(),
+                        valueColor = statusColor
+                    )
+                    VerticalDivider(
+                        modifier = Modifier.height(32.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                    MetaStat(label = "耗时", value = durationLabel)
+                    VerticalDivider(
+                        modifier = Modifier.height(32.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+                    MetaStat(label = "行数", value = "${logLines.size} 行")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ── 终端日志输出区域 ──
+            Text(
+                text = "终端输出",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+
+            if (logLines.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "本次执行无终端输出",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        items(logLines) { line ->
+                            val lineColor = when {
+                                line.contains("error", ignoreCase = true) ||
+                                line.contains("failed", ignoreCase = true) ||
+                                line.contains("exception", ignoreCase = true) -> TerminalError
+                                line.contains("warn", ignoreCase = true) -> TerminalWarn
+                                line.contains("success", ignoreCase = true) ||
+                                line.contains("installed", ignoreCase = true) ||
+                                line.contains("done", ignoreCase = true) -> TerminalSuccess
+                                line.startsWith("[") -> TerminalInfo
+                                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                            }
+                            Text(
+                                text = line,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                lineHeight = 17.sp,
+                                color = lineColor
+                            )
+                        }
+                        item { Spacer(Modifier.height(8.dp)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetaStat(
+    label: String,
+    value: String,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = valueColor
+        )
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        )
+    }
+}
+
+@Composable
+private fun RunLogCard(
+    log: RunLogEntity,
+    onClick: () -> Unit
+) {
     val timeLabel = remember(log.startTime) {
         SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(Date(log.startTime))
     }
@@ -217,7 +455,12 @@ private fun RunLogCard(log: RunLogEntity) {
         else -> "${log.durationMs / 1000}s"
     }
     val isSuccess = log.exitCode == 0
-    val statusColor = if (isSuccess) TerminalSuccess else TerminalError
+    val isUnknown = log.exitCode == -1
+    val statusColor = when {
+        isSuccess -> TerminalSuccess
+        isUnknown -> TerminalWarn
+        else -> TerminalError
+    }
     val statusLabel = when (log.exitCode) {
         0 -> "成功"
         -1 -> "未知"
@@ -229,80 +472,64 @@ private fun RunLogCard(log: RunLogEntity) {
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column {
-            // 摘要行（点击展开/折叠）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+                .padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { if (log.logText.isNotBlank()) expanded = !expanded }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.weight(1f)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
-                        contentDescription = null,
-                        tint = statusColor,
-                        modifier = Modifier.size(18.dp)
+                Icon(
+                    imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
+                    contentDescription = null,
+                    tint = statusColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Column {
+                    Text(
+                        text = timeLabel,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Column {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = timeLabel,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = statusLabel,
+                            fontSize = 11.sp,
+                            color = statusColor,
+                            fontWeight = FontWeight.Medium
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = statusLabel,
-                                fontSize = 11.sp,
-                                color = statusColor,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = "·",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            )
-                            Text(
-                                text = durationLabel,
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-                        }
+                        Text(
+                            text = "·",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                        )
+                        Text(
+                            text = durationLabel,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
-                }
-                if (log.logText.isNotBlank()) {
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "折叠" else "展开",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
 
-            // 展开的日志文本
-            AnimatedVisibility(visible = expanded && log.logText.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, bottom = 12.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(LogCardBg)
-                        .padding(10.dp)
+            // 日志预览摘要（若有内容）
+            if (log.logText.isNotBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = log.logText,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                        text = "查看详情",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                     )
                 }
             }
