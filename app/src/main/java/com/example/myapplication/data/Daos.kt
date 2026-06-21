@@ -39,6 +39,9 @@ interface ScheduledTaskDao {
     @Query("SELECT * FROM scheduled_tasks ORDER BY name ASC")
     fun getAll(): Flow<List<ScheduledTaskEntity>>
 
+    @Query("SELECT * FROM scheduled_tasks ORDER BY name ASC")
+    suspend fun getAllOnce(): List<ScheduledTaskEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(task: ScheduledTaskEntity)
 

@@ -10,6 +10,13 @@
     <!-- 允许本地 Socket 通信权限 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- AlarmManager 精准闹钟（Android 12+） -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- WorkManager / 后台任务唤醒 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 开机自启（AlarmManager 闹钟重注册） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- 🚨 Android 11+ 包可见性查询：必须显式声明声明查询 Termux，否则无法调用 -->
     <queries>
         <package android:name="com.termux" />
@@ -32,10 +39,23 @@
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- AlarmManager 触发接收器 -->
+        <receiver
+            android:name=".utils.scheduler.AlarmScheduleReceiver"
+            android:exported="false" />
+
+        <!-- 开机后重注册 AlarmManager 闹钟 -->
+        <receiver
+            android:name=".utils.scheduler.BootAlarmRestoreReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

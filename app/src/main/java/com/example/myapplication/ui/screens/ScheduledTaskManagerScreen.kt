@@ -51,6 +51,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.example.myapplication.utils.CronTranslator
 import com.example.myapplication.utils.CronNextRunCalculator
+import com.example.myapplication.utils.SchedulerPreference
+import com.example.myapplication.utils.SchedulerPreference.SchedulerType
+import com.example.myapplication.utils.scheduler.TaskSchedulerManager
 import com.example.myapplication.ui.theme.TypeColorPython
 import com.example.myapplication.ui.theme.TypeColorShell
 import com.example.myapplication.ui.theme.TypeColorNode
@@ -160,6 +163,9 @@ fun ScheduledTaskManagerScreen(
     var onlyFailed by remember { mutableStateOf(false) }
     val filters = listOf("全部", "Python", "Shell", "Node.js")
 
+    // 调度引擎选择（从 SharedPreferences 读取，可热切换）
+    var selectedSchedulerType by remember { mutableStateOf(SchedulerPreference.getType(context)) }
+
     var isCreatingNew by remember { mutableStateOf(false) }
     var editorTarget by remember { mutableStateOf<ScheduledTask?>(null) }
     var activeTerminalTask by remember { mutableStateOf<ScheduledTask?>(null) }
@@ -226,6 +232,18 @@ fun ScheduledTaskManagerScreen(
                 }
             }
 
+            // 调度引擎选择卡片
+            SchedulerSelectorCard(
+                currentType = selectedSchedulerType,
+                modifier    = Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp),
+                onSwitch    = { newType ->
+                    scope.launch(Dispatchers.IO) {
+                        TaskSchedulerManager.switchScheduler(context, newType, dbTasks)
+                    }
+                    selectedSchedulerType = newType
+                }
+            )
+
             if (failedCount > 0) {
                 FailureBanner(count = failedCount, active = onlyFailed, onClick = { onlyFailed = !onlyFailed })
             }
@@ -251,7 +269,15 @@ fun ScheduledTaskManagerScreen(
                             task = task,
                             onStatusToggle = { enabled ->
                                 scope.launch(Dispatchers.IO) {
-                                    taskDao.update(task.copy(initialStatus = if (enabled) CronTaskStatus.Enabled else CronTaskStatus.Disabled).toEntity())
+                                    val updatedEntity = task.copy(
+                                        initialStatus = if (enabled) CronTaskStatus.Enabled else CronTaskStatus.Disabled
+                                    ).toEntity()
+                                    taskDao.update(updatedEntity)
+                                    if (enabled) {
+                                        TaskSchedulerManager.scheduleTask(context, updatedEntity)
+                                    } else {
+                                        TaskSchedulerManager.cancelTask(context, task.id)
+                                    }
                                 }
                             },
                             onExecuteNow = { activeTerminalTask = task },
@@ -271,7 +297,13 @@ fun ScheduledTaskManagerScreen(
             availableScripts = availableScriptNames,
             onDismiss = { isCreatingNew = false; editorTarget = null },
             onSave = { saved ->
-                scope.launch(Dispatchers.IO) { taskDao.insert(saved.toEntity()) }
+                scope.launch(Dispatchers.IO) {
+                    val entity = saved.toEntity()
+                    taskDao.insert(entity)
+                    if (saved.initialStatus == CronTaskStatus.Enabled) {
+                        TaskSchedulerManager.scheduleTask(context, entity)
+                    }
+                }
                 isCreatingNew = false
                 editorTarget = null
             }
@@ -287,7 +319,10 @@ fun ScheduledTaskManagerScreen(
             text = { Text("该定时任务将被永久移除，绑定的脚本文件本身不受影响。") },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch(Dispatchers.IO) { taskDao.deleteById(task.id) }
+                    scope.launch(Dispatchers.IO) {
+                        taskDao.deleteById(task.id)
+                        TaskSchedulerManager.cancelTask(context, task.id)
+                    }
                     pendingDelete = null
                 }) { Text("删除", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
             },
@@ -297,6 +332,129 @@ fun ScheduledTaskManagerScreen(
 
     activeTerminalTask?.let { task ->
         TerminalConsoleBottomSheet(taskName = task.name, scriptName = task.targetScript, onDismiss = { activeTerminalTask = null })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 调度引擎选择卡片
+// ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun SchedulerSelectorCard(
+    currentType: SchedulerType,
+    modifier: Modifier = Modifier,
+    onSwitch: (SchedulerType) -> Unit
+) {
+    var showConfirm by remember { mutableStateOf<SchedulerType?>(null) }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Alarm,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "调度引擎",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(50)
+                ) {
+                    Text(
+                        text = "已选: ${currentType.shortLabel}",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                SchedulerType.entries.forEach { type ->
+                    val isSelected = type == currentType
+                    val containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh
+                    val contentColor   = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = containerColor),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(enabled = !isSelected) { showConfirm = type }
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = type.label,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
+                                color = contentColor
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = type.pros,
+                                fontSize = 10.sp,
+                                color = contentColor.copy(alpha = 0.8f),
+                                lineHeight = 13.sp
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "⚠ ${type.cons}",
+                                fontSize = 9.sp,
+                                color = contentColor.copy(alpha = if (isSelected) 0.7f else 0.5f),
+                                lineHeight = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 切换确认弹窗
+    showConfirm?.let { target ->
+        AlertDialog(
+            onDismissRequest = { showConfirm = null },
+            shape = RoundedCornerShape(24.dp),
+            icon = { Icon(Icons.Default.Alarm, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("切换至 ${target.label}？") },
+            text = {
+                Text(
+                    "当前调度引擎（${currentType.label}）的所有任务将被取消，\n并用新引擎（${target.label}）重新注册所有已启用任务。\n\n${target.description}",
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSwitch(target)
+                    showConfirm = null
+                }) {
+                    Text("确认切换", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { TextButton(onClick = { showConfirm = null }) { Text("取消") } }
+        )
     }
 }
 
