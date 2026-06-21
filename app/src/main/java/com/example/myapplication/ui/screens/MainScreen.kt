@@ -23,8 +23,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myapplication.data.AppDatabase
 import com.example.myapplication.ui.components.ExpressiveNavigationBar
 import com.example.myapplication.ui.components.ExpressiveTopAppBar
+import com.example.myapplication.utils.CronNextRunCalculator
 import com.example.myapplication.utils.FileHelper
 import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,6 +37,34 @@ fun MainScreen() {
     var currentRoute by remember { mutableStateOf("Dashboard") }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val scope = rememberCoroutineScope()
+
+    // ─── 数据库订阅（为仪表盘提供实时数据）───
+    val db = remember { AppDatabase.getDatabase(context) }
+    val dbScripts by db.scriptDao().getAll().collectAsStateWithLifecycle(initialValue = emptyList())
+    val dbTasks   by db.scheduledTaskDao().getAll().collectAsStateWithLifecycle(initialValue = emptyList())
+
+    val dashboardState by remember(dbScripts, dbTasks) {
+        derivedStateOf {
+            val enabledTasks = dbTasks.filter { it.isEnabled }
+            // 找到下次执行时间最早的任务
+            val nextTask = enabledTasks
+                .filter { it.cronExpression.trim().split(Regex("\\s+")).size == 5 }
+                .minByOrNull { CronNextRunCalculator.nextRunMillis(it.cronExpression) }
+            val nextRun = if (nextTask != null) {
+                NextRun(
+                    time = nextTask.nextRunTime.takeIf { it != "计算中..." && it != "计算错误" && it != "表达式无效" }
+                        ?: CronNextRunCalculator.nextRunTime(nextTask.cronExpression),
+                    scriptName = nextTask.name
+                )
+            } else {
+                NextRun("--:--", "暂无调度任务")
+            }
+            DashboardUiState(
+                totalScripts = dbScripts.size,
+                nextRun = nextRun
+            )
+        }
+    }
 
     // ─── 权限阻断状态 ───
     var hasFilePermission by remember { mutableStateOf(true) }
@@ -156,7 +187,7 @@ fun MainScreen() {
     ) { innerPadding ->
         Crossfade(targetState = currentRoute, label = "Route Transition") { route ->
             when (route) {
-                "Dashboard" -> DashboardScreen(contentPadding = innerPadding)
+                "Dashboard" -> DashboardScreen(state = dashboardState, contentPadding = innerPadding)
                 "ScriptManager" -> {
                     // 我们即将在下一节彻底重构这个页面，接入物理文件系统！
                     ScriptManagerScreen(

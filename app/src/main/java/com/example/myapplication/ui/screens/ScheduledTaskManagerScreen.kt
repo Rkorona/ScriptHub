@@ -50,6 +50,7 @@ import com.example.myapplication.ui.components.TerminalConsoleBottomSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.example.myapplication.utils.CronTranslator
+import com.example.myapplication.utils.CronNextRunCalculator
 import com.example.myapplication.ui.theme.TypeColorPython
 import com.example.myapplication.ui.theme.TypeColorShell
 import com.example.myapplication.ui.theme.TypeColorNode
@@ -136,6 +137,19 @@ fun ScheduledTaskManagerScreen(
     // 定时任务列表：从 Room 实时订阅，持久化到数据库
     val dbTasks by taskDao.getAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val tasksList = remember(dbTasks) { dbTasks.map { it.toUiModel() } }
+
+    // 对数据库中仍显示"计算中..."的老任务补算下次执行时间
+    LaunchedEffect(dbTasks) {
+        val stale = dbTasks.filter { it.nextRunTime == "计算中..." }
+        if (stale.isNotEmpty()) {
+            scope.launch(Dispatchers.IO) {
+                stale.forEach { task ->
+                    val computed = CronNextRunCalculator.nextRunTime(task.cronExpression)
+                    taskDao.update(task.copy(nextRunTime = computed))
+                }
+            }
+        }
+    }
 
     // 脚本列表：从 ScriptDao 实时订阅，与脚本管理页联动
     val dbScripts by db.scriptDao().getAll().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -451,7 +465,8 @@ private fun TaskEditorSheet(existing: ScheduledTask?, availableScripts: List<Str
             }
             Button(
                 onClick = {
-                    val saved = existing?.copy(name = name, targetScript = selectedScript, cronExpression = cron) ?: ScheduledTask(id = "task_${System.currentTimeMillis()}", name = name, targetScript = selectedScript, cronExpression = cron, nextRunTime = "计算中...", lastRunResult = "从未执行")
+                    val computedNext = CronNextRunCalculator.nextRunTime(cron)
+                    val saved = existing?.copy(name = name, targetScript = selectedScript, cronExpression = cron, nextRunTime = computedNext) ?: ScheduledTask(id = "task_${System.currentTimeMillis()}", name = name, targetScript = selectedScript, cronExpression = cron, nextRunTime = computedNext, lastRunResult = "从未执行")
                     onSave(saved)
                 },
                 enabled = name.isNotBlank() && cronValid && selectedScript.isNotBlank(), modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp)
