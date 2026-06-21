@@ -52,6 +52,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.ScriptEntity
 import com.example.myapplication.ui.components.TerminalConsoleBottomSheet
+import com.example.myapplication.ui.theme.TypeColorPython
+import com.example.myapplication.ui.theme.StatusRunning
+import com.example.myapplication.ui.theme.TerminalSuccess
 import com.example.myapplication.viewmodel.ScriptViewModel
 
 enum class DependencyStatus { None, Configured, Installed, Error }
@@ -484,7 +487,7 @@ fun ScriptCard(
         try {
             Color(android.graphics.Color.parseColor(script.themeColorHex))
         } catch (e: Exception) {
-            Color(0xFF38BDF8)
+            TypeColorPython
         }
     }
 
@@ -560,7 +563,7 @@ fun ScriptCard(
                             )
                         }
                         if (script.isRunning) {
-                            Box(modifier = Modifier.size(6.dp).background(Color(0xFF22C55E), RoundedCornerShape(50)))
+                            Box(modifier = Modifier.size(6.dp).background(StatusRunning, RoundedCornerShape(50)))
                         }
                     }
 
@@ -645,7 +648,7 @@ fun ScriptCard(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             val (statusText, statusColor) = when (dependencyStatusEnum) {
                                 DependencyStatus.Configured -> "检测到未安装依赖环境" to MaterialTheme.colorScheme.tertiary
-                                DependencyStatus.Installed -> "依赖环境已完全就绪" to Color(0xFF22C55E)
+                                DependencyStatus.Installed -> "依赖环境已完全就绪" to TerminalSuccess
                                 DependencyStatus.Error -> "依赖配置失败，环境异常" to MaterialTheme.colorScheme.error
                                 else -> "" to Color.Unspecified
                             }

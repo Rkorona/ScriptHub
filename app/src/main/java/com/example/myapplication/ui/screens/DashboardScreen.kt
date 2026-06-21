@@ -47,6 +47,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import com.example.myapplication.ui.theme.StatusRunning
+import com.example.myapplication.ui.theme.TerminalSuccess
+import com.example.myapplication.ui.theme.TerminalInfo
+import com.example.myapplication.ui.theme.TerminalError
+import com.example.myapplication.ui.theme.LogCardBg
+import com.example.myapplication.ui.theme.LogCardHeaderText
+import com.example.myapplication.ui.theme.LogCardMutedText
 
 // =====================================================================================
 // 数据模型 —— 归零初始状态，为接入真实数据库/执行环境做准备
@@ -162,7 +169,7 @@ private fun ServiceHealthCard(
     onRestart: () -> Unit,
     onViewLogs: () -> Unit
 ) {
-    val statusColor = if (state.serviceRunning) Color(0xFF22C55E) else MaterialTheme.colorScheme.error
+    val statusColor = if (state.serviceRunning) StatusRunning else MaterialTheme.colorScheme.error
 
     val infiniteTransition = rememberInfiniteTransition()
     val pulseAlpha by infiniteTransition.animateFloat(
@@ -326,16 +333,16 @@ private fun Float.trimZero(): String = if (this == this.toInt().toFloat()) this.
 @Composable
 private fun TerminalLogCard(logs: List<LogEntry>, onViewAll: () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+        colors = CardDefaults.cardColors(containerColor = LogCardBg),
         shape = RoundedCornerShape(28.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("最近执行动态", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = Color(0xFF94A3B8), modifier = Modifier.weight(1f))
+                Text("最近执行动态", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = LogCardHeaderText, modifier = Modifier.weight(1f))
                 if (logs.isNotEmpty()) {
                     TextButton(onClick = onViewAll) {
-                        Text("查看全部", color = Color(0xFF38BDF8), style = MaterialTheme.typography.labelMedium)
+                        Text("查看全部", color = TerminalInfo, style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -345,7 +352,7 @@ private fun TerminalLogCard(logs: List<LogEntry>, onViewAll: () -> Unit) {
             if (logs.isEmpty()) {
                 Text(
                     "暂无任何脚本执行记录",
-                    color = Color(0xFF475569),
+                    color = LogCardMutedText,
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     modifier = Modifier.padding(vertical = 12.dp)
                 )
@@ -362,9 +369,9 @@ private fun TerminalLogCard(logs: List<LogEntry>, onViewAll: () -> Unit) {
 @Composable
 private fun LogLine(entry: LogEntry) {
     val (icon, color) = when (entry.status) {
-        LogStatus.SUCCESS -> Icons.Default.CheckCircle to Color(0xFF4ADE80)
-        LogStatus.RUNNING -> Icons.Default.PlayArrow to Color(0xFF38BDF8)
-        LogStatus.FAILED -> Icons.Default.Cancel to Color(0xFFF87171)
+        LogStatus.SUCCESS -> Icons.Default.CheckCircle to TerminalSuccess
+        LogStatus.RUNNING -> Icons.Default.PlayArrow to TerminalInfo
+        LogStatus.FAILED -> Icons.Default.Cancel to TerminalError
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))

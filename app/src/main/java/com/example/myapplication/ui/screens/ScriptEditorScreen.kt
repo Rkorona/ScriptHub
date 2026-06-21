@@ -22,6 +22,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.utils.FileHelper
+import com.example.myapplication.ui.theme.EditorBackground
+import com.example.myapplication.ui.theme.EditorSurface
+import com.example.myapplication.ui.theme.EditorTextColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -76,7 +79,7 @@ fun ScriptEditorScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A), // 暗黑科技蓝
+                    containerColor = EditorBackground,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
                 )
@@ -87,13 +90,13 @@ fun ScriptEditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(Color(0xFF0F172A)) // 荧光黑客极客背景
+                .background(EditorBackground)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)
-                    .background(Color(0xFF020617), shape = RoundedCornerShape(16.dp))
+                    .background(EditorSurface, shape = RoundedCornerShape(16.dp))
                     .padding(16.dp)
             ) {
                 // 等宽代码输入框
@@ -101,7 +104,7 @@ fun ScriptEditorScreen(
                     value = codeText,
                     onValueChange = { codeText = it },
                     textStyle = TextStyle(
-                        color = Color(0xFF38BDF8), // 亮荧光青色字体
+                        color = EditorTextColor,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 14.sp,
                         lineHeight = 20.sp

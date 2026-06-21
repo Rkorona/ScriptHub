@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.data.DependencyEntity
 import com.example.myapplication.viewmodel.ConfigViewModel
+import com.example.myapplication.ui.theme.TerminalSuccess
 import java.util.UUID
 
 // 枚举保留
@@ -193,7 +194,7 @@ private fun DependencyCard(
             }
 
             val (text, color, icon) = when (dep.status) {
-                DepStatus.Installed -> Triple("已安装", Color(0xFF22C55E), Icons.Default.CheckCircle)
+                DepStatus.Installed -> Triple("已安装", TerminalSuccess, Icons.Default.CheckCircle)
                 DepStatus.Installing -> Triple("安装中", MaterialTheme.colorScheme.tertiary, Icons.Default.Sync)
                 DepStatus.Failed -> Triple("失败", MaterialTheme.colorScheme.error, Icons.Default.Error)
             }

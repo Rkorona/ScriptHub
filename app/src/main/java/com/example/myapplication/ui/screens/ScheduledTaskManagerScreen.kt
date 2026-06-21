@@ -44,6 +44,11 @@ import androidx.compose.ui.unit.sp
 
 import com.example.myapplication.ui.components.TerminalConsoleBottomSheet
 import com.example.myapplication.utils.CronTranslator
+import com.example.myapplication.ui.theme.TypeColorPython
+import com.example.myapplication.ui.theme.TypeColorShell
+import com.example.myapplication.ui.theme.TypeColorNode
+import com.example.myapplication.ui.theme.TypeColorOther
+import com.example.myapplication.ui.theme.StatusRunning
 
 // ─────────────────────────────────────────────────────────────
 // 任务启停状态
@@ -51,10 +56,10 @@ import com.example.myapplication.utils.CronTranslator
 enum class CronTaskStatus { Enabled, Disabled }
 
 enum class ScriptType(val label: String, val color: Color) {
-    PYTHON("Python", Color(0xFF38BDF8)),
-    SHELL("Shell", Color(0xFF22C55E)),
-    NODE("Node.js", Color(0xFFA855F7)),
-    OTHER("脚本", Color(0xFF94A3B8));
+    PYTHON("Python", TypeColorPython),
+    SHELL("Shell", TypeColorShell),
+    NODE("Node.js", TypeColorNode),
+    OTHER("脚本", TypeColorOther);
 
     companion object {
         fun fromFileName(fileName: String): ScriptType = when {
@@ -278,7 +283,7 @@ private fun CronTaskCard(task: ScheduledTask, onStatusToggle: (Boolean) -> Unit,
     val statusColor = when {
         !isEnabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
         !task.isSuccess -> MaterialTheme.colorScheme.error
-        task.isRunning -> Color(0xFF22C55E)
+        task.isRunning -> StatusRunning
         else -> accent
     }
 

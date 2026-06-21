@@ -10,36 +10,72 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
-// 🌙 深色配置映射（Termius 风格）
+// 🌙 薄荷深色方案（M3 Expressive）
 private val DarkColorScheme = darkColorScheme(
-    primary = TermiusDarkPrimary,
-    secondary = TermiusDarkSecondary,
-    tertiary = TermiusDarkTertiary,
-    background = TermiusDarkBackground,
-    surfaceContainer = TermiusDarkSurfaceContainer,
-    onSurface = TermiusDarkOnSurface,
-    onPrimary = TermiusDarkBackground,
-    secondaryContainer = TermiusDarkSecondaryContainer,
-    onSecondaryContainer = TermiusDarkOnSecondaryContainer
+    primary                = MintDarkPrimary,
+    onPrimary              = MintDarkOnPrimary,
+    primaryContainer       = MintDarkPrimaryContainer,
+    onPrimaryContainer     = MintDarkOnPrimaryContainer,
+    secondary              = MintDarkSecondary,
+    onSecondary            = MintDarkOnSecondary,
+    secondaryContainer     = MintDarkSecondaryContainer,
+    onSecondaryContainer   = MintDarkOnSecondaryContainer,
+    tertiary               = MintDarkTertiary,
+    onTertiary             = MintDarkOnTertiary,
+    tertiaryContainer      = MintDarkTertiaryContainer,
+    onTertiaryContainer    = MintDarkOnTertiaryContainer,
+    error                  = MintDarkError,
+    onError                = MintDarkOnError,
+    errorContainer         = MintDarkErrorContainer,
+    onErrorContainer       = MintDarkOnErrorContainer,
+    background             = MintDarkBackground,
+    onBackground           = MintDarkOnBackground,
+    surface                = MintDarkSurface,
+    onSurface              = MintDarkOnSurface,
+    surfaceVariant         = MintDarkSurfaceVariant,
+    onSurfaceVariant       = MintDarkOnSurfaceVariant,
+    surfaceContainer       = MintDarkSurfaceContainer,
+    surfaceContainerHigh   = MintDarkSurfaceContainerHigh,
+    surfaceContainerHighest= MintDarkSurfaceContainerHighest,
+    outline                = MintDarkOutline,
+    outlineVariant         = MintDarkOutlineVariant
 )
 
-// ☀️ 浅色配置映射（Termius 风格）
+// ☀️ 薄荷浅色方案（M3 Expressive）
 private val LightColorScheme = lightColorScheme(
-    primary = TermiusLightPrimary,
-    secondary = TermiusLightSecondary,
-    tertiary = TermiusLightTertiary,
-    background = TermiusLightBackground,
-    surfaceContainer = TermiusLightSurfaceContainer,
-    onSurface = TermiusLightOnSurface,
-    onPrimary = TermiusLightSurfaceContainer,
-    secondaryContainer = TermiusLightSecondaryContainer,
-    onSecondaryContainer = TermiusLightOnSecondaryContainer
+    primary                = MintLightPrimary,
+    onPrimary              = MintLightOnPrimary,
+    primaryContainer       = MintLightPrimaryContainer,
+    onPrimaryContainer     = MintLightOnPrimaryContainer,
+    secondary              = MintLightSecondary,
+    onSecondary            = MintLightOnSecondary,
+    secondaryContainer     = MintLightSecondaryContainer,
+    onSecondaryContainer   = MintLightOnSecondaryContainer,
+    tertiary               = MintLightTertiary,
+    onTertiary             = MintLightOnTertiary,
+    tertiaryContainer      = MintLightTertiaryContainer,
+    onTertiaryContainer    = MintLightOnTertiaryContainer,
+    error                  = MintLightError,
+    onError                = MintLightOnError,
+    errorContainer         = MintLightErrorContainer,
+    onErrorContainer       = MintLightOnErrorContainer,
+    background             = MintLightBackground,
+    onBackground           = MintLightOnBackground,
+    surface                = MintLightSurface,
+    onSurface              = MintLightOnSurface,
+    surfaceVariant         = MintLightSurfaceVariant,
+    onSurfaceVariant       = MintLightOnSurfaceVariant,
+    surfaceContainer       = MintLightSurfaceContainer,
+    surfaceContainerHigh   = MintLightSurfaceContainerHigh,
+    surfaceContainerHighest= MintLightSurfaceContainerHighest,
+    outline                = MintLightOutline,
+    outlineVariant         = MintLightOutlineVariant
 )
 
 @Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // 强制关闭系统动态壁纸取色，守住 Termius 的纯正血统
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

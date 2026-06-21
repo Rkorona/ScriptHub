@@ -21,6 +21,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.AppDatabase
 import com.example.myapplication.utils.TermuxRunner
+import com.example.myapplication.ui.theme.TerminalInfo
+import com.example.myapplication.ui.theme.TerminalSuccess
+import com.example.myapplication.ui.theme.TerminalError
+import com.example.myapplication.ui.theme.TerminalWarn
+import com.example.myapplication.ui.theme.TerminalExec
+import com.example.myapplication.ui.theme.TerminalSheetBg
+import com.example.myapplication.ui.theme.EditorSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -29,7 +36,7 @@ import java.io.InputStreamReader
 import java.net.ServerSocket
 import java.net.Socket
 
-data class LogLine(val text: String, val color: Color = Color(0xFF4ADE80))
+data class LogLine(val text: String, val color: Color = TerminalSuccess)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,20 +59,20 @@ fun TerminalConsoleBottomSheet(
 
     // 🔬 极客级本地 Socket 日志监听监听器
     LaunchedEffect(taskName) {
-        logs.add(LogLine("[INFO] 初始化自动化执行管线...", Color(0xFF38BDF8)))
+        logs.add(LogLine("[INFO] 初始化自动化执行管线...", TerminalInfo))
         
         val scriptEntity = withContext(Dispatchers.IO) {
             scriptDao.getByName(scriptName) ?: scriptDao.getByName(taskName)
         }
 
         if (scriptEntity == null) {
-            logs.add(LogLine("[ERROR] 未在本地数据库中检测到该脚本的环境映射缓存", Color(0xFFF87171)))
-            logs.add(LogLine("[INFO] 请确保脚本已在《脚本管理》物理对齐扫描完毕", Color(0xFF38BDF8)))
+            logs.add(LogLine("[ERROR] 未在本地数据库中检测到该脚本的环境映射缓存", TerminalError))
+            logs.add(LogLine("[INFO] 请确保脚本已在《脚本管理》物理对齐扫描完毕", TerminalInfo))
             isRunning = false
             return@LaunchedEffect
         }
 
-        logs.add(LogLine("[INFO] 检测运行环境: ${scriptEntity.type} (物理扫描正常)...", Color(0xFF38BDF8)))
+        logs.add(LogLine("[INFO] 检测运行环境: ${scriptEntity.type} (物理扫描正常)...", TerminalInfo))
 
         // 在 IO 线程启动 Socket 拦截服务器
         withContext(Dispatchers.IO) {
@@ -81,7 +88,7 @@ fun TerminalConsoleBottomSheet(
                 }
                 val allocatedPort = serverSocket.localPort
                 
-                logs.add(LogLine("[INFO] 已分配本地物理管道端口: $allocatedPort", Color(0xFF38BDF8)))
+                logs.add(LogLine("[INFO] 已分配本地物理管道端口: $allocatedPort", TerminalInfo))
 
                 // 2. 启动 Termux 并将动态分配的端口传递过去
                 TermuxRunner.executeScript(
@@ -93,13 +100,13 @@ fun TerminalConsoleBottomSheet(
                     socketPort = allocatedPort
                 )
 
-                logs.add(LogLine("[EXEC] 调度指令已派发至 Termux 引擎，等待物理管道连通...", Color(0xFFA855F7)))
+                logs.add(LogLine("[EXEC] 调度指令已派发至 Termux 引擎，等待物理管道连通...", TerminalExec))
 
                 // 等待连接
                 clientSocket = serverSocket.accept()
                 
                 withContext(Dispatchers.Main) {
-                    logs.add(LogLine("[INFO] 物理数据管道双向连通建立成功，开始承接运行日志 ➔", Color(0xFF22C55E)))
+                    logs.add(LogLine("[INFO] 物理数据管道双向连通建立成功，开始承接运行日志 ➔", TerminalSuccess))
                 }
 
                 reader = BufferedReader(InputStreamReader(clientSocket.inputStream))
@@ -108,10 +115,10 @@ fun TerminalConsoleBottomSheet(
                 while (reader.readLine().also { line = it } != null) {
                     val finalLine = line!!
                     val logColor = when {
-                        finalLine.contains("error", ignoreCase = true) || finalLine.contains("failed", ignoreCase = true) -> Color(0xFFF87171)
-                        finalLine.contains("success", ignoreCase = true) || finalLine.contains("installed", ignoreCase = true) -> Color(0xFF4ADE80)
-                        finalLine.contains("warning", ignoreCase = true) -> Color(0xFFEAB308)
-                        else -> Color(0xFF38BDF8)
+                        finalLine.contains("error", ignoreCase = true) || finalLine.contains("failed", ignoreCase = true) -> TerminalError
+                        finalLine.contains("success", ignoreCase = true) || finalLine.contains("installed", ignoreCase = true) -> TerminalSuccess
+                        finalLine.contains("warning", ignoreCase = true) -> TerminalWarn
+                        else -> TerminalInfo
                     }
 
                     withContext(Dispatchers.Main) {
@@ -121,11 +128,11 @@ fun TerminalConsoleBottomSheet(
 
             } catch (e: java.io.InterruptedIOException) {
                 withContext(Dispatchers.Main) {
-                    logs.add(LogLine("[WARN] 管道连通超时：请检查 Termux 后台是否在线，且已按照教程授予 App 跨应用调用权限", Color(0xFFEAB308)))
+                    logs.add(LogLine("[WARN] 管道连通超时：请检查 Termux 后台是否在线，且已按照教程授予 App 跨应用调用权限", TerminalWarn))
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    logs.add(LogLine("[ERROR] 管道拦截异常: ${e.message}", Color(0xFFF87171)))
+                    logs.add(LogLine("[ERROR] 管道拦截异常: ${e.message}", TerminalError))
                 }
             } finally {
                 // 3. 【核心改进：防内存与端口泄漏】使用 NonCancellable 确保即使协程被取消，清理代码也一定会完整执行
@@ -140,7 +147,7 @@ fun TerminalConsoleBottomSheet(
                     withContext(Dispatchers.Main) {
                         isRunning = false
                         logs.add(LogLine("[INFO] ──────────────────────────────────────────", Color.Gray))
-                        logs.add(LogLine("[FINISHED] 自动化引擎完成调度。进程正常退出 (Exit Code: 0)", Color(0xFF22C55E)))
+                        logs.add(LogLine("[FINISHED] 自动化引擎完成调度。进程正常退出 (Exit Code: 0)", TerminalSuccess))
                     }
                 }
             }
@@ -157,7 +164,7 @@ fun TerminalConsoleBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF090D16),
+        containerColor = TerminalSheetBg,
         dragHandle = { BottomSheetDefaults.DragHandle(color = Color.DarkGray) }
     ) {
         Column(
@@ -175,7 +182,7 @@ fun TerminalConsoleBottomSheet(
                     Icon(
                         Icons.Default.Terminal, 
                         contentDescription = null, 
-                        tint = Color(0xFF38BDF8),
+                        tint = TerminalInfo,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -188,12 +195,12 @@ fun TerminalConsoleBottomSheet(
                 }
                 
                 Surface(
-                    color = if (isRunning) Color(0xFFEAB308).copy(alpha = 0.2f) else Color(0xFF22C55E).copy(alpha = 0.2f),
+                    color = if (isRunning) TerminalWarn.copy(alpha = 0.2f) else TerminalSuccess.copy(alpha = 0.2f),
                     shape = RoundedCornerShape(20.dp)
                 ) {
                     Text(
                         text = if (isRunning) "• RUNNING" else "• FINISHED",
-                        color = if (isRunning) Color(0xFFEAB308) else Color(0xFF22C55E),
+                        color = if (isRunning) TerminalWarn else TerminalSuccess,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -207,7 +214,7 @@ fun TerminalConsoleBottomSheet(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(Color(0xFF020617), shape = RoundedCornerShape(16.dp))
+                    .background(EditorSurface, shape = RoundedCornerShape(16.dp))
                     .padding(12.dp)
             ) {
                 LazyColumn(
