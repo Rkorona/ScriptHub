@@ -45,7 +45,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplication.data.AppDatabase
+import com.example.myapplication.data.ScheduledTaskEntity
 import com.example.myapplication.ui.components.TerminalConsoleBottomSheet
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.example.myapplication.utils.CronTranslator
 import com.example.myapplication.ui.theme.TypeColorPython
 import com.example.myapplication.ui.theme.TypeColorShell
@@ -92,22 +95,51 @@ data class ScheduledTask(
 
 private val taskIconBlobShape = RoundedCornerShape(topStart = 16.dp, topEnd = 10.dp, bottomEnd = 16.dp, bottomStart = 10.dp)
 
+// ─────────────────────────────────────────────────────────────
+// Entity ↔ UI 模型转换
+// ─────────────────────────────────────────────────────────────
+private fun ScheduledTaskEntity.toUiModel() = ScheduledTask(
+    id = id,
+    name = name,
+    targetScript = targetScript,
+    cronExpression = cronExpression,
+    nextRunTime = nextRunTime,
+    lastRunResult = lastRunResult,
+    isSuccess = isSuccess,
+    isRunning = false, // App 重启后运行状态归零
+    initialStatus = if (isEnabled) CronTaskStatus.Enabled else CronTaskStatus.Disabled
+)
+
+private fun ScheduledTask.toEntity() = ScheduledTaskEntity(
+    id = id,
+    name = name,
+    targetScript = targetScript,
+    cronExpression = cronExpression,
+    nextRunTime = nextRunTime,
+    lastRunResult = lastRunResult,
+    isEnabled = initialStatus == CronTaskStatus.Enabled,
+    isSuccess = isSuccess,
+    isRunning = isRunning
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduledTaskManagerScreen(
     contentPadding: PaddingValues = PaddingValues(),
     modifier: Modifier = Modifier
 ) {
-    // 💡 移除所有硬编码，初始状态为空表
-    val tasksList = remember { mutableStateListOf<ScheduledTask>() }
-
-    // 从 Room 数据库实时读取脚本列表，与脚本管理页完全联动
     val context = LocalContext.current
     val db = remember { AppDatabase.getDatabase(context) }
+    val taskDao = remember { db.scheduledTaskDao() }
+    val scope = rememberCoroutineScope()
+
+    // 定时任务列表：从 Room 实时订阅，持久化到数据库
+    val dbTasks by taskDao.getAll().collectAsStateWithLifecycle(initialValue = emptyList())
+    val tasksList = remember(dbTasks) { dbTasks.map { it.toUiModel() } }
+
+    // 脚本列表：从 ScriptDao 实时订阅，与脚本管理页联动
     val dbScripts by db.scriptDao().getAll().collectAsStateWithLifecycle(initialValue = emptyList())
-    val availableScriptNames = remember(dbScripts) {
-        dbScripts.map { it.name }.ifEmpty { emptyList() }
-    }
+    val availableScriptNames = remember(dbScripts) { dbScripts.map { it.name } }
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("全部") }
@@ -204,8 +236,9 @@ fun ScheduledTaskManagerScreen(
                         CronTaskCard(
                             task = task,
                             onStatusToggle = { enabled ->
-                                val idx = tasksList.indexOfFirst { it.id == task.id }
-                                if (idx >= 0) tasksList[idx] = tasksList[idx].copy(initialStatus = if (enabled) CronTaskStatus.Enabled else CronTaskStatus.Disabled)
+                                scope.launch(Dispatchers.IO) {
+                                    taskDao.update(task.copy(initialStatus = if (enabled) CronTaskStatus.Enabled else CronTaskStatus.Disabled).toEntity())
+                                }
                             },
                             onExecuteNow = { activeTerminalTask = task },
                             onViewLog = { activeTerminalTask = task },
@@ -224,8 +257,7 @@ fun ScheduledTaskManagerScreen(
             availableScripts = availableScriptNames,
             onDismiss = { isCreatingNew = false; editorTarget = null },
             onSave = { saved ->
-                val idx = tasksList.indexOfFirst { it.id == saved.id }
-                if (idx >= 0) tasksList[idx] = saved else tasksList.add(saved)
+                scope.launch(Dispatchers.IO) { taskDao.insert(saved.toEntity()) }
                 isCreatingNew = false
                 editorTarget = null
             }
@@ -240,7 +272,10 @@ fun ScheduledTaskManagerScreen(
             title = { Text("删除「${task.name}」？") },
             text = { Text("该定时任务将被永久移除，绑定的脚本文件本身不受影响。") },
             confirmButton = {
-                TextButton(onClick = { tasksList.removeAll { it.id == task.id }; pendingDelete = null }) { Text("删除", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
+                TextButton(onClick = {
+                    scope.launch(Dispatchers.IO) { taskDao.deleteById(task.id) }
+                    pendingDelete = null
+                }) { Text("删除", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("取消") } }
         )

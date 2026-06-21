@@ -35,6 +35,24 @@ interface DependencyDao {
 }
 
 @Dao
+interface ScheduledTaskDao {
+    @Query("SELECT * FROM scheduled_tasks ORDER BY name ASC")
+    fun getAll(): Flow<List<ScheduledTaskEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(task: ScheduledTaskEntity)
+
+    @Update
+    suspend fun update(task: ScheduledTaskEntity)
+
+    @Delete
+    suspend fun delete(task: ScheduledTaskEntity)
+
+    @Query("DELETE FROM scheduled_tasks WHERE id = :id")
+    suspend fun deleteById(id: String)
+}
+
+@Dao
 interface ScriptDao {
     @Query("SELECT * FROM scripts")
     fun getAll(): Flow<List<ScriptEntity>>

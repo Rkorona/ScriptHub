@@ -24,6 +24,20 @@ data class DependencyEntity(
     val version: String = "latest"
 )
 
+@Entity(tableName = "scheduled_tasks")
+data class ScheduledTaskEntity(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val targetScript: String,
+    val cronExpression: String,
+    val nextRunTime: String = "计算中...",
+    val lastRunResult: String = "从未执行",
+    val isEnabled: Boolean = true,
+    val isSuccess: Boolean = true,
+    val isRunning: Boolean = false,
+    val themeColorHex: String? = null
+)
+
 @Entity(tableName = "scripts")
 data class ScriptEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
