@@ -40,7 +40,7 @@ object ProotManager {
         val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
         if (nativeLib.exists()) return nativeLib
 
-        // 备用：从 assets 复制到应用私有目录，再用系统 chmod 赋予执行权限
+        // 备用：从 assets 复制并赋予执行权限
         val fallback = File(context.noBackupFilesDir, "proot")
         if (!fallback.exists() || fallback.length() == 0L) {
             try {
@@ -59,11 +59,9 @@ object ProotManager {
     }
 
     fun getRootfsDir(context: Context, distro: DistroType): File {
-        // 优先使用内部存储：支持真正的 symlink（外部存储 FUSE 不支持，导致 bin→usr/bin 失效）
         val internal = File(context.filesDir, "proot-rootfs/${distro.id}")
         if (internal.exists()) return internal
 
-        // 迁移旧版：外部存储已有安装 → 自动迁移到内部存储
         val external = context.getExternalFilesDir("proot-rootfs")?.let { File(it, distro.id) }
         if (external != null && external.exists() && File(external, ".scripthub_installed").exists()) {
             Log.d(TAG, "迁移 rootfs 从外部存储到内部存储...")
@@ -90,7 +88,6 @@ object ProotManager {
         val marker = File(dir, ".scripthub_installed")
         if (marker.exists()) return true
 
-        // 迁移：旧版安装没有标记文件，检测到 usr/bin 目录即认为已安装，补写标记
         val usrBin = File(dir, "usr/bin")
         if (usrBin.exists() && (usrBin.listFiles()?.isNotEmpty() == true)) {
             Log.d(TAG, "迁移：检测到已有 rootfs，补写 .scripthub_installed")
@@ -105,7 +102,6 @@ object ProotManager {
         try {
             _progress.value = SetupProgress()
 
-            // proot 已打包进 APK (jniLibs/arm64-v8a/libproot.so)，安装时自动解压，无需下载
             if (!isProotReady(context)) {
                 throw IOException("proot 引擎未找到，请重新安装应用")
             }
@@ -163,8 +159,6 @@ object ProotManager {
         Log.d(TAG, "[$percent%] $phase")
     }
 
-    // ─── rootfs URL 解析 ──────────────────────────────────────────────────────
-
     private fun fetchLatestRootfsUrl(baseUrl: String): String {
         val html = httpGetText(baseUrl)
         val regex = Regex("""href="(\d{8}_\d{2}(?:%3A|:)\d{2})/?"""")
@@ -179,8 +173,6 @@ object ProotManager {
         val latest = entries.maxByOrNull { it.replace("%3A", ":") }!!
         return "${baseUrl}${latest}/rootfs.tar.xz"
     }
-
-    // ─── 通用工具 ─────────────────────────────────────────────────────────────
 
     private fun httpGetText(urlStr: String): String {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
@@ -306,16 +298,10 @@ object ProotManager {
             Log.w(TAG, "scripthub.sh 写入失败: ${e.message}")
         }
 
-        // 修复 UsrMerge 符号链接
         fixUsrMergeSymlinks(rootfsDir)
-
-        // 写入安装完成标记
         File(rootfsDir, ".scripthub_installed").createNewFile()
     }
 
-    /**
-     * 修复 UsrMerge 符号链接
-     */
     private fun fixUsrMergeSymlinks(rootfsDir: File) {
         val links = mapOf(
             "bin"    to "usr/bin",
@@ -352,9 +338,8 @@ object ProotManager {
      * 构建 Proot 命令行
      *
      * 【重要修复】
-     * 1. 挂载系统的 /system、/vendor 目录。
-     * 2. 移除了上一版本对 "/tmp" 的外部 bind-mount 绑定！让容器内的 PRoot 采用 link2symlink 机制自行管理内部的 /tmp。
-     * 容器内应用对外部绑定挂载的目录进行 chmod 往往会触发 Android 的安全策略报错。
+     * 1. 挂载系统的 /system、/vendor 目录外，增加挂载 /apex 目录！
+     * 在 Android 10+ 平台上，Bionic 的动态链接器(linker)移到了 APEX 模块中，不挂载 /apex 会导致容器程序找不到动态连接器而报错 execve 找不到文件！
      */
     fun buildProotCommand(
         context: Context,
@@ -365,7 +350,7 @@ object ProotManager {
         val rootfsPath = getRootfsDir(context, distro).absolutePath
         val scriptsDir = "/sdcard/QLPanel/scripts"
 
-        return listOf(
+        val commands = mutableListOf(
             prootBin,
             "--rootfs=$rootfsPath",
             "-0",
@@ -374,23 +359,30 @@ object ProotManager {
             "-b", "/dev:/dev",
             "-b", "/sys:/sys",
             "-b", "/system:/system",
-            "-b", "/vendor:/vendor", // 补全系统库可能需要的底层驱动/连接器绑定
+            "-b", "/vendor:/vendor"
+        )
+
+        // 核心修复1：检测并挂载 /apex，解决 Android 10+ 底层 runtime linker 依赖问题
+        val apexDir = File("/apex")
+        if (apexDir.exists()) {
+            commands.add("-b")
+            commands.add("/apex:/apex")
+        }
+
+        commands.addAll(listOf(
             "-b", "$scriptsDir:/data/scripts",
             "-w", "/root",
             "/bin/bash", "--login", "-c", bashCommand
-        )
+        ))
+
+        return commands
     }
 
-    /**
-     * 获取安全且独立的 PRoot 运行期专属临时目录
-     */
     private fun getStableTmpDir(context: Context): File {
-        // 使用 files 目录下的一个稳定子目录，权限等级最高，比 cache 更不易被 Android 系统干扰。
         val dir = File(context.filesDir, "pr_tmp")
         if (!dir.exists()) {
             dir.mkdirs()
         }
-        // 赋予严格的所有者读写执行权限（700）防止 chmod 冲突
         try {
             dir.setReadable(true, true)
             dir.setWritable(true, true)
@@ -401,6 +393,10 @@ object ProotManager {
 
     /**
      * 返回配置好运行环境的 ProcessBuilder
+     *
+     * 【核心升级：彻底移除干扰】
+     * 1. 彻底清空宿主机注入的任何 LD_PRELOAD（包括 libandroid-shmem.so），避免动态链接命名空间隔离导致容器的 bin 崩溃。
+     * 2. 清理并设置纯净的环境变量环境。
      */
     fun buildProotProcess(
         context: Context,
@@ -413,34 +409,29 @@ object ProotManager {
         val nativeDir = context.applicationInfo.nativeLibraryDir
         val ldPath    = "$libsDir:$nativeDir"
 
-        val shmemLib  = File(nativeDir, "libandroid-shmem.so")
-        val ldPreload = if (shmemLib.exists()) shmemLib.absolutePath else ""
-
-        // 获取并重置纯净的临时运行目录
         val stableTmp = getStableTmpDir(context)
         try {
-            // 清理上一次运行残留的、可能导致 chmod 失败的脏文件
             stableTmp.listFiles()?.forEach { it.deleteRecursively() }
         } catch (_: Exception) {}
 
         return ProcessBuilder(cmd).apply {
-            // 彻底净化宿主机的临时变量污染，确保 PRoot 在纯净沙盒环境中解析其临时文件
+            // 清理宿主机继承的所有环境变量（包括宿主机 APP 自带的、继承自 Android 进程的脏参数）
             environment().clear()
             
-            // 重新设置容器所必须的标准环境变量
+            // 重新填入纯净的基础系统环境变量
             environment()["HOME"]            = "/root"
             environment()["TERM"]            = "xterm-256color"
             environment()["LANG"]            = "C.UTF-8"
             environment()["PATH"]            = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
             environment()["LD_LIBRARY_PATH"] = ldPath
             
-            // 核心修复：强制重设 PROOT 运行期环境变量，指向 files 下的安全专用路径
+            // 临时目录环境强制隔离，不要受 Android 全局环境变量干扰
             environment()["PROOT_TMP_DIR"]   = stableTmp.absolutePath
             environment()["TMPDIR"]          = stableTmp.absolutePath
             
-            if (ldPreload.isNotEmpty()) {
-                environment()["LD_PRELOAD"] = ldPreload
-            }
+            // 【核心修复2】坚决不能使用 LD_PRELOAD 注入 libandroid-shmem.so！
+            // 在高版本 Android 系统下，跨隔离域的 .so 预加载到外部程序内部会引发 linker 解析崩溃。
+            // 我们不传 LD_PRELOAD，让 proot 自身通过底层指令拦截实现翻译。
         }
     }
 
