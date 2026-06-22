@@ -449,11 +449,22 @@ object ProotManager {
         ensureDir("data/scripts")
 
         // resolv.conf：DNS 配置
+        // 【必须无条件覆盖】Debian rootfs 中 /etc/resolv.conf 通常是指向
+        // /run/systemd/resolve/stub-resolv.conf 的符号链接（内含 127.0.0.53），
+        // 在 proot 里 systemd-resolved 没有运行，DNS 解析完全失败。
+        // 删除任何现有的符号链接/文件，写入公共 DNS，保证 apt 联网正常。
         try {
-            val resolvConf = File(rootfsDir, "etc/resolv.conf").canonicalFile
-            if (!resolvConf.exists() || resolvConf.length() == 0L) {
-                resolvConf.writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\n")
+            val resolvPath = File(rootfsDir, "etc/resolv.conf").absolutePath
+            // 用 toPath 操作，不跟随符号链接
+            val resolvNio = java.nio.file.Paths.get(resolvPath)
+            if (java.nio.file.Files.exists(resolvNio, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+                java.nio.file.Files.delete(resolvNio)
             }
+            java.nio.file.Files.writeString(
+                resolvNio,
+                "nameserver 8.8.8.8\nnameserver 8.8.4.4\nnameserver 1.1.1.1\n"
+            )
+            Log.d(TAG, "resolv.conf 已写入公共 DNS")
         } catch (e: Exception) {
             Log.w(TAG, "resolv.conf 写入失败: ${e.message}")
         }
