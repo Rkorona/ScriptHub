@@ -17,6 +17,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Paths
+import android.system.Os
 
 data class SetupProgress(
     val phase: String = "",
@@ -189,7 +190,10 @@ object ProotManager {
     }
 
     /**
-     * 最小完整性校验：不仅检查文件是否存在，还要确保它们不是 0 字节的空文件或死链接。
+     * 最小完整性校验：
+     * 【核心修复】：必须使用 java.nio.file.LinkOption.NOFOLLOW_LINKS 进行符号链接存在性校验。
+     * 否则，指向容器内绝对路径（如指向 /lib/...）的软链接在 Android 宿主机上由于目标不存在，
+     * 会被 File.exists() 直接判定为不存，从而引发误判和安装中断报错。
      */
     private fun verifyCriticalBinaries(rootfsDir: File): List<String> {
         val mustHave = mapOf(
@@ -206,9 +210,11 @@ object ProotManager {
             )
         )
         return mustHave.filterValues { candidates ->
-            candidates.none { 
-                val file = File(rootfsDir, it)
-                file.exists() && (file.length() > 0 || Files.isSymbolicLink(file.toPath())) 
+            candidates.none { relPath ->
+                val file = File(rootfsDir, relPath)
+                val path = file.toPath()
+                // 仅校验该位置的文件/软链接本身是否存在，不追踪目标路径
+                Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)
             }
         }.keys.toList()
     }
@@ -282,7 +288,8 @@ object ProotManager {
 
     /**
      * 【终极核心升级】使用纯 Java 库（Apache Commons Compress）直接在内存流中解压 .tar.xz
-     * 100% 避免对 Android 系统底层 `tar` 命令行工具的依赖，完美处理硬链接、软链接以及特殊权限！
+     * 1. 100% 避免对 Android 系统底层 `tar` 命令行工具的依赖，完美处理硬链接、软链接以及特殊权限！
+     * 2. 【POSIX原生修复】：升级软链接与硬链接的底层实现，采用 Android OS 原生 symlink/link 机制，彻底绕过 NIO 封装限制。
      */
     private fun extractTarXzJava(tarXzFile: File, destDir: File) {
         tarXzFile.inputStream().buffered(64 * 1024).use { fileIn ->
@@ -308,22 +315,25 @@ object ProotManager {
                         if (entry.isDirectory) {
                             targetFile.mkdirs()
                         } else if (entry.isSymbolicLink) {
-                            // 核心修复：原生创建符号链接（支持绝对与相对软链）
-                            val linkPath = targetFile.toPath()
-                            val targetPath = Paths.get(entry.linkName)
+                            // 核心修复：使用 android.system.Os.symlink 在 Linux ext4 原生层写入软链接
                             try {
-                                Files.deleteIfExists(linkPath)
-                                Files.createSymbolicLink(linkPath, targetPath)
+                                if (targetFile.exists() || Files.isSymbolicLink(targetFile.toPath())) {
+                                    targetFile.deleteRecursively()
+                                }
+                                targetFile.parentFile?.mkdirs()
+                                Os.symlink(entry.linkName, targetFile.absolutePath)
                             } catch (e: Exception) {
                                 Log.w(TAG, "符号链接创建失败 [非致命警告]: ${entry.name} -> ${entry.linkName} (${e.message})")
                             }
                         } else if (entry.isLink) {
                             // 处理硬链接
-                            val linkPath = targetFile.toPath()
-                            val hardLinkTarget = File(destDir, entry.linkName).canonicalFile.toPath()
+                            val hardLinkTarget = File(destDir, entry.linkName).canonicalFile
                             try {
-                                Files.deleteIfExists(linkPath)
-                                Files.createLink(linkPath, hardLinkTarget)
+                                if (targetFile.exists() || Files.isSymbolicLink(targetFile.toPath())) {
+                                    targetFile.deleteRecursively()
+                                }
+                                targetFile.parentFile?.mkdirs()
+                                Os.link(hardLinkTarget.absolutePath, targetFile.absolutePath)
                             } catch (e: Exception) {
                                 Log.w(TAG, "硬链接创建失败 [非致命警告]: ${entry.name} -> ${entry.linkName} (${e.message})")
                             }
@@ -421,9 +431,7 @@ object ProotManager {
                 
                 if (!link.exists()) {
                     try {
-                        val path = link.toPath()
-                        val targetPath = java.nio.file.Paths.get(target)
-                        java.nio.file.Files.createSymbolicLink(path, targetPath)
+                        Os.symlink(target, link.absolutePath)
                         Log.d(TAG, "补建 UsrMerge symlink: $name → $target")
                     } catch (e: Exception) {
                         Log.w(TAG, "symlink $name → $target 创建失败: ${e.message}")
@@ -539,7 +547,7 @@ object ProotManager {
     }
 
     private fun getProotLibsDir(context: Context): File =
-        File(context.noBackupFilesDir.canonicalFile, "proot-libs").also { it.mkdirs() }.canonicalFile
+        File(context.noBackupFilesDir.canonicalFile, "proot-libs").also { it.mkdirs() }.canonicalPath
 
     fun ensureTallocLib(context: Context) {
         val dest = File(getProotLibsDir(context), "libtalloc.so.2").canonicalFile
@@ -595,7 +603,9 @@ object ProotManager {
             )
 
             for (check in checks) {
-                val found = check.candidates.firstOrNull { File(rootfsDir, it).exists() }
+                val found = check.candidates.firstOrNull { 
+                    Files.exists(File(rootfsDir, it).toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) 
+                }
                 if (found != null) {
                     sb.appendLine("  ✓ ${check.label}  ($found)")
                 } else {
