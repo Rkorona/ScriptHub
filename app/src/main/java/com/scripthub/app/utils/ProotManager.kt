@@ -356,6 +356,56 @@ object ProotManager {
             "/bin/bash", "--login", "-c", bashCommand
         )
     }
+
+    /**
+     * 返回配置好运行环境的 ProcessBuilder，调用方只需 .start()。
+     * 自动处理 LD_LIBRARY_PATH（包含 libtalloc.so.2 所在目录），
+     * 避免 "CANNOT LINK EXECUTABLE: libtalloc.so.2 not found" 错误。
+     */
+    fun buildProotProcess(
+        context: Context,
+        distro: DistroType,
+        bashCommand: String
+    ): ProcessBuilder {
+        ensureTallocLib(context)
+        val cmd = buildProotCommand(context, distro, bashCommand)
+        val libsDir    = getProotLibsDir(context).absolutePath
+        val nativeDir  = context.applicationInfo.nativeLibraryDir
+        val ldPath     = "$libsDir:$nativeDir"
+
+        return ProcessBuilder(cmd).apply {
+            environment()["HOME"]            = "/root"
+            environment()["TERM"]            = "xterm-256color"
+            environment()["LANG"]            = "C.UTF-8"
+            environment()["PATH"]            =
+                "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            environment()["LD_LIBRARY_PATH"] = ldPath
+        }
+    }
+
+    /**
+     * proot 依赖的 libtalloc.so.2 存放目录（App 私有，可写）。
+     * 运行时通过 LD_LIBRARY_PATH 指向此目录。
+     */
+    private fun getProotLibsDir(context: Context): File =
+        File(context.noBackupFilesDir, "proot-libs").also { it.mkdirs() }
+
+    /**
+     * 确保 libtalloc.so.2 已从 assets 提取到 proot-libs 目录。
+     * 幂等操作，多次调用安全。
+     */
+    fun ensureTallocLib(context: Context) {
+        val dest = File(getProotLibsDir(context), "libtalloc.so.2")
+        if (dest.exists() && dest.length() > 0L) return
+        try {
+            context.assets.open("libtalloc.so.2").use { input ->
+                dest.outputStream().use { input.copyTo(it) }
+            }
+            Log.d(TAG, "libtalloc.so.2 已提取到 ${dest.absolutePath}")
+        } catch (e: Exception) {
+            Log.e(TAG, "libtalloc.so.2 提取失败: ${e.message}")
+        }
+    }
 }
 
 // ─── InputStream 扩展工具 ────────────────────────────────────────────────────

@@ -50,17 +50,9 @@ object ProotRunner {
             ( $runCmd $targetFile 2>&1 ; echo "[SYSTEM_EXIT_CODE]:${'$'}?" )
         """.trimIndent()
 
-        val cmd = ProotManager.buildProotCommand(context, distro, bashCommand)
-        Log.d(TAG, "启动 proot 进程: ${cmd.take(6).joinToString(" ")}")
+        Log.d(TAG, "启动 proot 进程: $distro / $scriptName")
 
-        return ProcessBuilder(cmd)
-            .apply {
-                environment()["HOME"]  = "/root"
-                environment()["TERM"]  = "xterm-256color"
-                environment()["LANG"]  = "C.UTF-8"
-                environment()["PATH"]  =
-                    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-            }
+        return ProotManager.buildProotProcess(context, distro, bashCommand)
             .redirectErrorStream(true)
             .start()
     }

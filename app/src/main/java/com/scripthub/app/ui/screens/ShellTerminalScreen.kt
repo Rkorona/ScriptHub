@@ -110,17 +110,12 @@ fun ShellTerminalScreen(contentPadding: PaddingValues) {
 
         withContext(Dispatchers.IO) {
             try {
-                val cmd = ProotManager.buildProotCommand(context, distro, "bash --norc --noprofile")
-                val pb = ProcessBuilder(cmd).apply {
-                    environment()["HOME"]  = "/root"
-                    environment()["TERM"]  = "xterm-256color"
-                    environment()["LANG"]  = "C.UTF-8"
-                    environment()["PS1"]   = ""
-                    environment()["PATH"]  =
-                        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+                val proc = ProotManager.buildProotProcess(
+                    context, distro, "bash --norc --noprofile"
+                ).apply {
+                    environment()["PS1"] = ""
                     redirectErrorStream(true)
-                }
-                val proc = pb.start()
+                }.start()
                 process = proc
                 val writer = java.io.OutputStreamWriter(proc.outputStream)
                 stdinWriter = writer
