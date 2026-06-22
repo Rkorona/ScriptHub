@@ -33,11 +33,11 @@ object ProotManager {
     private const val TERMUX_APT_BASE =
         "https://packages.termux.dev/apt/termux-main/"
 
-    // LXC 官方镜像 - current 指向最新每日构建
-    private const val DEBIAN_ROOTFS_URL =
-        "https://images.linuxcontainers.org/images/debian/bookworm/arm64/default/current/rootfs.tar.xz"
-    private const val UBUNTU_ROOTFS_URL =
-        "https://images.linuxcontainers.org/images/ubuntu/jammy/arm64/default/current/rootfs.tar.xz"
+    // LXC 官方镜像基础路径，自动抓取最新日期目录
+    private const val DEBIAN_ROOTFS_BASE =
+        "https://images.linuxcontainers.org/images/debian/bookworm/arm64/default/"
+    private const val UBUNTU_ROOTFS_BASE =
+        "https://images.linuxcontainers.org/images/ubuntu/jammy/arm64/default/"
 
     private val _progress = MutableStateFlow(SetupProgress())
     val progress: StateFlow<SetupProgress> = _progress
@@ -73,9 +73,12 @@ object ProotManager {
             val rootfsDir = getRootfsDir(context, distro)
             if (!isDistroInstalled(context, distro)) {
                 rootfsDir.mkdirs()
-                val url = if (distro == DistroType.DEBIAN) DEBIAN_ROOTFS_URL else UBUNTU_ROOTFS_URL
-                val tarFile = File(context.cacheDir, "${distro.id}-rootfs.tar.xz")
+                val base = if (distro == DistroType.DEBIAN) DEBIAN_ROOTFS_BASE else UBUNTU_ROOTFS_BASE
+                emit("正在查询 ${distro.displayName} 最新镜像版本...", 19)
+                val url = fetchLatestRootfsUrl(base)
+                Log.d(TAG, "rootfs URL: $url")
 
+                val tarFile = File(context.cacheDir, "${distro.id}-rootfs.tar.xz")
                 emit("正在下载 ${distro.displayName} 根文件系统...", 20)
                 downloadFile(url, tarFile) { downloaded, total ->
                     if (total > 0) {
@@ -243,6 +246,33 @@ object ProotManager {
             }
             throw IOException("在 .deb 包中未找到成员: $memberPrefix")
         }
+    }
+
+    // ─── rootfs URL 解析 ──────────────────────────────────────────────────────
+
+    /**
+     * 抓取 LXC 镜像目录的 HTML 列表，解析出最新的日期目录名（如 20260621_22:32），
+     * 返回拼接好的 rootfs.tar.xz 完整下载链接。
+     *
+     * 目录列表中链接格式：<a href="20260621_22%3A32/">20260621_22:32/</a>
+     * 日期格式 YYYYMMDD_HH:MM 可直接按字典序排最大值取最新。
+     */
+    private fun fetchLatestRootfsUrl(baseUrl: String): String {
+        val html = httpGetText(baseUrl)
+        // 匹配 href 里形如 "20260621_22%3A32/" 或 "20260621_22:32/" 的目录链接
+        val regex = Regex("""href="(\d{8}_\d{2}(?:%3A|:)\d{2})/?"""")
+        val entries = regex.findAll(html)
+            .map { it.groupValues[1] }
+            .toList()
+
+        if (entries.isEmpty()) {
+            throw IOException("无法从目录列表解析到镜像版本: $baseUrl")
+        }
+
+        // 统一将 %3A 替换为 : 后按字典序取最大（最新）
+        val latest = entries.maxByOrNull { it.replace("%3A", ":") }!!
+        // 拼接时保留原始编码（%3A），避免 URL 二次编码问题
+        return "${baseUrl}${latest}/rootfs.tar.xz"
     }
 
     // ─── 通用工具 ─────────────────────────────────────────────────────────────
