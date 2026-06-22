@@ -330,13 +330,20 @@ object ProotManager {
             decompressXz(tarXzFile, tarFile)
 
             emit("正在展开 tar 归档...", 82)
-            val process = ProcessBuilder("tar", "-xf", tarFile.absolutePath, "-C", destDir.absolutePath)
-                .redirectErrorStream(true)
-                .start()
+            val process = ProcessBuilder(
+                "tar", "-xf", tarFile.absolutePath,
+                "-C", destDir.absolutePath,
+                "--no-same-owner"          // 跳过 chown，Android 无 root 时会 Permission denied
+            ).redirectErrorStream(true).start()
             val output   = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
-            if (exitCode != 0) {
+            // exit 1 = 有警告（硬链接/symlink 部分失败），不是致命错误
+            // exit 2 = 真正的致命错误（如磁盘满、文件不可读）
+            if (exitCode > 1) {
                 throw IOException("tar 展开失败 (exit $exitCode):\n$output")
+            }
+            if (exitCode == 1) {
+                Log.w(TAG, "tar 展开有警告 (exit 1)，继续:\n$output")
             }
         } finally {
             tarFile.delete()
@@ -383,6 +390,42 @@ object ProotManager {
         File(rootfsDir, "root").mkdirs()
         File(rootfsDir, "tmp").mkdirs()
         File(rootfsDir, "data/scripts").mkdirs()
+
+        // Debian/Ubuntu UsrMerge：/bin /sbin /lib /lib64 均为指向 usr/* 的符号链接。
+        // Android tar 无法创建这些链接（Permission denied），在此用 Java 补全。
+        fixUsrMergeSymlinks(rootfsDir)
+    }
+
+    /**
+     * 补全 Debian UsrMerge 规定的顶层符号链接。
+     * 如果 tar 已经成功创建了真实目录，则跳过（不覆盖）。
+     * 链接值均为相对路径，与 rootfs 内逻辑一致。
+     */
+    private fun fixUsrMergeSymlinks(rootfsDir: File) {
+        // 格式：链接名 → 链接目标（相对 rootfsDir）
+        val links = mapOf(
+            "bin"    to "usr/bin",
+            "sbin"   to "usr/sbin",
+            "lib"    to "usr/lib",
+            "lib64"  to "usr/lib64",
+            "lib32"  to "usr/lib32",
+            "libx32" to "usr/libx32"
+        )
+        for ((name, target) in links) {
+            val link = File(rootfsDir, name)
+            val targetDir = File(rootfsDir, target)
+            // 目标存在且链接不存在（tar 跳过了）→ 补建
+            if (targetDir.exists() && !link.exists()) {
+                try {
+                    val path = link.toPath()
+                    val targetPath = java.nio.file.Paths.get(target)
+                    java.nio.file.Files.createSymbolicLink(path, targetPath)
+                    Log.d(TAG, "补建 UsrMerge symlink: $name → $target")
+                } catch (e: Exception) {
+                    Log.w(TAG, "symlink $name → $target 创建失败: ${e.message}")
+                }
+            }
+        }
     }
 
     fun buildProotCommand(
