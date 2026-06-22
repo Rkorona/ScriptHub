@@ -34,23 +34,23 @@ object ProotManager {
     val progress: StateFlow<SetupProgress> = _progress
 
     /**
-     * 获取 proot 可执行文件路径
+     * 获取 proot 可执行文件路径（强制转换物理真实路径）
      */
     fun getProotBin(context: Context): File {
-        val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
+        val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot.so").canonicalFile
         if (nativeLib.exists()) return nativeLib
 
         // 备用：从 assets 复制并赋予执行权限
-        val fallback = File(context.noBackupFilesDir, "proot")
+        val fallback = File(context.noBackupFilesDir.canonicalFile, "proot").canonicalFile
         if (!fallback.exists() || fallback.length() == 0L) {
             try {
                 context.assets.open("proot").use { input ->
                     fallback.outputStream().use { input.copyTo(it) }
                 }
                 Runtime.getRuntime()
-                    .exec(arrayOf("/system/bin/chmod", "755", fallback.absolutePath))
+                    .exec(arrayOf("/system/bin/chmod", "755", fallback.canonicalPath))
                     .waitFor()
-                Log.d(TAG, "从 assets 复制 proot 到 ${fallback.absolutePath}")
+                Log.d(TAG, "从 assets 复制 proot 到 ${fallback.canonicalPath}")
             } catch (e: Exception) {
                 Log.e(TAG, "assets 备用路径初始化失败: ${e.message}")
             }
@@ -59,10 +59,10 @@ object ProotManager {
     }
 
     fun getRootfsDir(context: Context, distro: DistroType): File {
-        val internal = File(context.filesDir, "proot-rootfs/${distro.id}")
+        val internal = File(context.filesDir.canonicalFile, "proot-rootfs/${distro.id}").canonicalFile
         if (internal.exists()) return internal
 
-        val external = context.getExternalFilesDir("proot-rootfs")?.let { File(it, distro.id) }
+        val external = context.getExternalFilesDir("proot-rootfs")?.let { File(it.canonicalFile, distro.id).canonicalFile }
         if (external != null && external.exists() && File(external, ".scripthub_installed").exists()) {
             Log.d(TAG, "迁移 rootfs 从外部存储到内部存储...")
             try {
@@ -86,7 +86,17 @@ object ProotManager {
         if (!dir.exists()) return false
 
         val marker = File(dir, ".scripthub_installed")
-        if (marker.exists()) return true
+        if (marker.exists()) {
+            // 增加双重校验：如果标记存在，但关键运行文件缺失或为空，依然判定为未安装成功
+            val missing = verifyCriticalBinaries(dir)
+            if (missing.isEmpty()) {
+                return true
+            } else {
+                Log.w(TAG, "检测到环境标记存在，但关键文件 $missing 损坏或丢失，强制触发重新安装！")
+                marker.delete()
+                return false
+            }
+        }
 
         val usrBin = File(dir, "usr/bin")
         if (usrBin.exists() && (usrBin.listFiles()?.isNotEmpty() == true)) {
@@ -109,13 +119,14 @@ object ProotManager {
 
             val rootfsDir = getRootfsDir(context, distro)
             if (!isDistroInstalled(context, distro)) {
+                rootfsDir.deleteRecursively() // 清理可能存在的半吊子残存目录
                 rootfsDir.mkdirs()
                 val base = if (distro == DistroType.DEBIAN) DEBIAN_ROOTFS_BASE else UBUNTU_ROOTFS_BASE
                 emit("正在查询 ${distro.displayName} 最新镜像版本...", 19)
                 val url = fetchLatestRootfsUrl(base)
                 Log.d(TAG, "rootfs URL: $url")
 
-                val tarFile = File(context.cacheDir, "${distro.id}-rootfs.tar.xz")
+                val tarFile = File(context.cacheDir.canonicalFile, "${distro.id}-rootfs.tar.xz").canonicalFile
                 emit("正在下载 ${distro.displayName} 根文件系统...", 20)
                 downloadFile(url, tarFile) { downloaded, total ->
                     if (total > 0) {
@@ -134,14 +145,13 @@ object ProotManager {
                 emit("配置系统运行环境...", 92)
                 configureRootfs(context, rootfsDir, distro)
 
-                // 解压完立刻校验，缺关键文件就直接清掉重来，
-                // 不要让一个半成品环境顶着 .scripthub_installed 标记继续留着
+                // 解压完立刻校验，缺关键文件就直接清掉重来
                 val missingFresh = verifyCriticalBinaries(rootfsDir)
                 if (missingFresh.isNotEmpty()) {
                     rootfsDir.deleteRecursively()
                     throw IOException(
                         "根文件系统解压不完整，缺少: ${missingFresh.joinToString("、")}。" +
-                            "可能是网络中断或存储空间不足导致，请重试安装"
+                            "可能是存储空间不足或解压出错，请卸载重试。"
                     )
                 }
             } else {
@@ -152,7 +162,7 @@ object ProotManager {
                 if (missingExisting.isNotEmpty()) {
                     throw IOException(
                         "检测到已安装的 ${distro.displayName} 缺少: ${missingExisting.joinToString("、")}，" +
-                            "运行环境不完整。请到设置中卸载该环境后重新安装"
+                            "运行环境不完整。请卸载该环境后重新安装"
                     )
                 }
             }
@@ -175,7 +185,7 @@ object ProotManager {
     }
 
     /**
-     * 解压/安装后的最小完整性校验：只检查"缺了就根本没法启动 shell"的几个关键文件。
+     * 最小完整性校验：不仅检查文件是否存在，还要确保它们不是 0 字节的空文件或死链接。
      */
     private fun verifyCriticalBinaries(rootfsDir: File): List<String> {
         val mustHave = mapOf(
@@ -192,7 +202,10 @@ object ProotManager {
             )
         )
         return mustHave.filterValues { candidates ->
-            candidates.none { File(rootfsDir, it).exists() }
+            candidates.none { 
+                val file = File(rootfsDir, it)
+                file.exists() && file.length() > 0 
+            }
         }.keys.toList()
     }
 
@@ -264,7 +277,7 @@ object ProotManager {
     }
 
     private fun extractTarXz(tarXzFile: File, destDir: File) {
-        val tarFile = File(tarXzFile.parent, tarXzFile.nameWithoutExtension)
+        val tarFile = File(tarXzFile.parent, tarXzFile.nameWithoutExtension).canonicalFile
         try {
             emit("正在解压 XZ 流...", 77)
             decompressXz(tarXzFile, tarFile)
@@ -304,7 +317,7 @@ object ProotManager {
 
     private fun configureRootfs(context: Context, rootfsDir: File, distro: DistroType) {
         fun ensureDir(path: String): File {
-            val dir = File(rootfsDir, path)
+            val dir = File(rootfsDir, path).canonicalFile
             if (!dir.exists()) {
                 val ok = dir.mkdirs()
                 if (!ok && !dir.exists()) {
@@ -322,7 +335,7 @@ object ProotManager {
 
         // resolv.conf：DNS 配置
         try {
-            val resolvConf = File(rootfsDir, "etc/resolv.conf")
+            val resolvConf = File(rootfsDir, "etc/resolv.conf").canonicalFile
             if (!resolvConf.exists() || resolvConf.length() == 0L) {
                 resolvConf.writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\n")
             }
@@ -332,7 +345,7 @@ object ProotManager {
 
         // 环境变量脚本
         try {
-            File(rootfsDir, "etc/profile.d/scripthub.sh").writeText(
+            File(rootfsDir, "etc/profile.d/scripthub.sh").canonicalFile.writeText(
                 """
                 export HOME=/root
                 export TERM=xterm-256color
@@ -346,7 +359,7 @@ object ProotManager {
         }
 
         fixUsrMergeSymlinks(rootfsDir)
-        File(rootfsDir, ".scripthub_installed").createNewFile()
+        File(rootfsDir, ".scripthub_installed").canonicalFile.createNewFile()
     }
 
     private fun fixUsrMergeSymlinks(rootfsDir: File) {
@@ -359,8 +372,8 @@ object ProotManager {
             "libx32" to "usr/libx32"
         )
         for ((name, target) in links) {
-            val link = File(rootfsDir, name)
-            val targetDir = File(rootfsDir, target)
+            val link = File(rootfsDir, name).canonicalFile
+            val targetDir = File(rootfsDir, target).canonicalFile
             if (targetDir.exists()) {
                 if (link.exists() && !java.nio.file.Files.isSymbolicLink(link.toPath())) {
                     Log.w(TAG, "清理普通文件目录，准备重建符号链接: ${link.absolutePath}")
@@ -389,8 +402,8 @@ object ProotManager {
         distro: DistroType,
         bashCommand: String
     ): List<String> {
-        val prootBin   = getProotBin(context).absolutePath
-        val rootfsPath = getRootfsDir(context, distro).absolutePath
+        val prootBin   = getProotBin(context).canonicalPath
+        val rootfsPath = getRootfsDir(context, distro).canonicalPath
         val scriptsDir = "/sdcard/QLPanel/scripts"
 
         val commands = mutableListOf(
@@ -422,7 +435,7 @@ object ProotManager {
     }
 
     private fun getStableTmpDir(context: Context): File {
-        val dir = File(context.filesDir, "pr_tmp")
+        val dir = File(context.filesDir.canonicalFile, "pr_tmp").canonicalFile
         if (!dir.exists()) {
             dir.mkdirs()
         }
@@ -436,13 +449,6 @@ object ProotManager {
 
     /**
      * 返回配置好运行环境的 ProcessBuilder
-     *
-     * 【修复细节说明】
-     * 1. 绝对不能使用 environment().clear() 完全擦除环境。
-     * Android 系统 Bionic linker 和 SELinux 机制高度依赖 ANDROID_* 等底层变量。
-     * 2. 我们通过过滤、保留白名单的方式清理宿主机变量。
-     * 3. 必须在 LD_LIBRARY_PATH 以及 PATH 中保留 Android 系统的原生支持。
-     * 4. 修复 Temp 目录并发清理 Bug：不采用暴力 deleteRecursively 清理，避免多进程运行冲突。
      */
     fun buildProotProcess(
         context: Context,
@@ -451,14 +457,13 @@ object ProotManager {
     ): ProcessBuilder {
         ensureTallocLib(context)
         val cmd       = buildProotCommand(context, distro, bashCommand)
-        val libsDir   = getProotLibsDir(context).absolutePath
-        val nativeDir = context.applicationInfo.nativeLibraryDir
+        val libsDir   = getProotLibsDir(context).canonicalPath
+        val nativeDir = File(context.applicationInfo.nativeLibraryDir).canonicalPath
         val ldPath    = "$libsDir:$nativeDir"
 
-        val stableTmp = getStableTmpDir(context)
+        val stableTmp = getStableTmpDir(context).canonicalFile
 
         return ProcessBuilder(cmd).apply {
-            // 获取原生环境，进行【选择性过滤】而非直接彻底 clear()
             val env = environment()
             
             // 备份需要保留的 Android 核心系统环境变量
@@ -471,7 +476,6 @@ object ProotManager {
                 env[key]?.let { preservedEnv[key] = it }
             }
 
-            // 清空环境（防止 Termux 等外部环境变量污染）
             env.clear()
 
             // 1. 恢复 Android 必需的核心环境变量
@@ -482,30 +486,30 @@ object ProotManager {
             env["TERM"]            = "xterm-256color"
             env["LANG"]            = "C.UTF-8"
             
-            // PATH 必须同时包含：容器 PATH 和 宿主机 PATH (确保 proot 能调用本机命令比如 chmod)
+            // PATH 必须包含真实系统物理路径
             env["PATH"]            = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin:/system/xbin"
             env["LD_LIBRARY_PATH"] = ldPath
             
-            // 3. 核心修复：临时目录环境强制隔离，并让 PRoot 获取读写及 Socket 创建权限
-            env["PROOT_TMP_DIR"]   = stableTmp.absolutePath
-            env["TMPDIR"]          = stableTmp.absolutePath
+            // 3. 核心修复：临时物理路径强制规范化隔离
+            env["PROOT_TMP_DIR"]   = stableTmp.canonicalPath
+            env["TMPDIR"]          = stableTmp.canonicalPath
             
-            // 4. 清除 LD_PRELOAD。
+            // 4. 清除 LD_PRELOAD
             env.remove("LD_PRELOAD")
         }
     }
 
     private fun getProotLibsDir(context: Context): File =
-        File(context.noBackupFilesDir, "proot-libs").also { it.mkdirs() }
+        File(context.noBackupFilesDir.canonicalFile, "proot-libs").also { it.mkdirs() }.canonicalFile
 
     fun ensureTallocLib(context: Context) {
-        val dest = File(getProotLibsDir(context), "libtalloc.so.2")
+        val dest = File(getProotLibsDir(context), "libtalloc.so.2").canonicalFile
         if (dest.exists() && dest.length() > 0L) return
         try {
             context.assets.open("libtalloc.so.2").use { input ->
                 dest.outputStream().use { input.copyTo(it) }
             }
-            Log.d(TAG, "libtalloc.so.2 已提取到 ${dest.absolutePath}")
+            Log.d(TAG, "libtalloc.so.2 已提取到 ${dest.canonicalPath}")
         } catch (e: Exception) {
             Log.e(TAG, "libtalloc.so.2 提取失败: ${e.message}")
         }
