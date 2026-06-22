@@ -289,27 +289,48 @@ object ProotManager {
     }
 
     private fun configureRootfs(context: Context, rootfsDir: File, distro: DistroType) {
-        File(rootfsDir, "etc").mkdirs()
-
-        val resolvConf = File(rootfsDir, "etc/resolv.conf")
-        if (!resolvConf.exists() || resolvConf.length() == 0L) {
-            resolvConf.writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\n")
+        // 强制确保目录存在：mkdirs() 对已存在目录返回 false 但不报错，用 exists() 兜底
+        fun ensureDir(path: String): File {
+            val dir = File(rootfsDir, path)
+            if (!dir.exists()) {
+                val ok = dir.mkdirs()
+                if (!ok && !dir.exists()) {
+                    Log.w(TAG, "无法创建目录: ${dir.absolutePath}")
+                }
+            }
+            return dir
         }
 
-        File(rootfsDir, "etc/profile.d").mkdirs()
-        File(rootfsDir, "etc/profile.d/scripthub.sh").writeText(
-            """
-            export HOME=/root
-            export TERM=xterm-256color
-            export LANG=C.UTF-8
-            export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-            export SCRIPTS_DIR=/data/scripts
-            """.trimIndent()
-        )
+        ensureDir("etc")
+        ensureDir("etc/profile.d")
+        ensureDir("root")
+        ensureDir("tmp")
+        ensureDir("data/scripts")
 
-        File(rootfsDir, "root").mkdirs()
-        File(rootfsDir, "tmp").mkdirs()
-        File(rootfsDir, "data/scripts").mkdirs()
+        // resolv.conf：DNS 配置，非致命，写失败仅记录警告
+        try {
+            val resolvConf = File(rootfsDir, "etc/resolv.conf")
+            if (!resolvConf.exists() || resolvConf.length() == 0L) {
+                resolvConf.writeText("nameserver 8.8.8.8\nnameserver 8.8.4.4\n")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "resolv.conf 写入失败（非致命）: ${e.message}")
+        }
+
+        // 环境变量脚本
+        try {
+            File(rootfsDir, "etc/profile.d/scripthub.sh").writeText(
+                """
+                export HOME=/root
+                export TERM=xterm-256color
+                export LANG=C.UTF-8
+                export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+                export SCRIPTS_DIR=/data/scripts
+                """.trimIndent()
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "scripthub.sh 写入失败（非致命）: ${e.message}")
+        }
 
         // Debian/Ubuntu UsrMerge：/bin /sbin /lib /lib64 均为指向 usr/* 的符号链接。
         // Android tar 无法创建这些链接（Permission denied），在此用 Java 补全。
@@ -359,13 +380,10 @@ object ProotManager {
         val prootBin   = getProotBin(context).absolutePath
         val rootfsPath = getRootfsDir(context, distro).absolutePath
         val scriptsDir = "/sdcard/QLPanel/scripts"
-        // 使用 app 自己的 tmp 目录，避免 proot 扫描 Termux 路径
-        val tmpDir     = File(context.cacheDir, "proot-tmp").also { it.mkdirs() }.absolutePath
 
         return listOf(
             prootBin,
             "--rootfs=$rootfsPath",
-            "--tmpdir=$tmpDir",
             "-0",
             "--link2symlink",
             "-b", "/proc:/proc",
