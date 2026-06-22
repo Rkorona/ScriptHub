@@ -292,6 +292,10 @@ object ProotManager {
      * 在物理写入时将其重写为以容器内部为根的相对路径，彻底解决高版本 Android 的写保护和死链接创建失败问题。
      */
     private fun extractTarXzJava(tarXzFile: File, destDir: File) {
+    // 收集解压失败或 target 还不存在的硬链接，留待二阶段处理
+        data class DeferredLink(val targetFile: File, val linkName: String)
+        val deferredHardLinks = mutableListOf<DeferredLink>()
+    
         tarXzFile.inputStream().buffered(64 * 1024).use { fileIn ->
             XZInputStream(fileIn).use { xzIn ->
                 TarArchiveInputStream(xzIn).use { tarIn ->
@@ -299,99 +303,97 @@ object ProotManager {
                     var count = 0
                     while (entry != null) {
                         val entryName = entry.name
-                        // 过滤掉不安全路径，防止目录穿越漏洞
-                        if (entryName.contains("..")) {
-                            entry = tarIn.nextEntry
-                            continue
-                        }
-
+                        if (entryName.contains("..")) { entry = tarIn.nextEntry; continue }
+    
                         val targetFile = File(destDir, entryName).canonicalFile
-                        // 确保目标路径包含在 destDir 内部，安全防护
-                        if (!targetFile.path.startsWith(destDir.path)) {
-                            entry = tarIn.nextEntry
-                            continue
-                        }
-
+                        if (!targetFile.path.startsWith(destDir.path)) { entry = tarIn.nextEntry; continue }
+    
                         if (entry.isDirectory) {
                             targetFile.mkdirs()
                         } else if (entry.isSymbolicLink) {
+                            // 软链接逻辑不变（省略）
                             try {
-                                if (targetFile.exists() || Files.isSymbolicLink(targetFile.toPath())) {
-                                    targetFile.delete()
-                                }
+                                if (targetFile.exists() || Files.isSymbolicLink(targetFile.toPath())) targetFile.delete()
                                 targetFile.parentFile?.mkdirs()
-
-                                // 处理绝对路径软链接（如 /lib/ld-xxx）
                                 var symlinkTarget = entry.linkName
                                 if (symlinkTarget.startsWith("/")) {
-                                    // 计算从当前 targetFile 的父目录到 destDir 根目录的相对层级
                                     val parentFile = targetFile.parentFile
                                     if (parentFile != null) {
                                         val relDepth = parentFile.canonicalPath
                                             .removePrefix(destDir.canonicalPath)
-                                            .split(File.separator)
-                                            .filter { it.isNotEmpty() }
-                                            .size
+                                            .split(File.separator).filter { it.isNotEmpty() }.size
                                         val prefix = if (relDepth == 0) "./" else "../".repeat(relDepth)
                                         symlinkTarget = prefix + symlinkTarget.removePrefix("/")
                                     }
                                 }
-
                                 Os.symlink(symlinkTarget, targetFile.absolutePath)
                             } catch (e: Exception) {
-                                Log.w(TAG, "符号链接创建失败 [非致命警告]: ${entry.name} -> ${entry.linkName} (${e.message})")
+                                Log.w(TAG, "符号链接失败: ${entry.name} -> ${entry.linkName} (${e.message})")
                             }
                         } else if (entry.isLink) {
-                            // 处理硬链接
                             val hardLinkTarget = File(destDir, entry.linkName).canonicalFile
-                            try {
-                                if (targetFile.exists() || Files.isSymbolicLink(targetFile.toPath())) {
-                                    targetFile.delete()
+                            var linked = false
+                            if (hardLinkTarget.exists()) {
+                                try {
+                                    if (targetFile.exists() || Files.isSymbolicLink(targetFile.toPath())) targetFile.delete()
+                                    targetFile.parentFile?.mkdirs()
+                                    Os.link(hardLinkTarget.absolutePath, targetFile.absolutePath)
+                                    linked = true
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "硬链接失败（一阶段）: ${entry.name} -> ${entry.linkName} (${e.message})")
                                 }
-                                targetFile.parentFile?.mkdirs()
-                                Os.link(hardLinkTarget.absolutePath, targetFile.absolutePath)
-                            } catch (e: Exception) {
-                                Log.w(TAG, "硬链接创建失败 [非致命警告]: ${entry.name} -> ${entry.linkName} (${e.message})")
+                            }
+                            // ← 关键修复：target 不存在或失败，加入延迟列表
+                            if (!linked) {
+                                deferredHardLinks.add(DeferredLink(targetFile, entry.linkName))
                             }
                         } else {
-                            // 普通物理文件写入
-                            // 【核心 UsrMerge 兼容防护】：
-                            // 如果 targetFile 的父目录本身应该是个软链接（但被前面错误的解压误删或者解压顺序错乱），
-                            // 我们需要确保父目录依然存在且不是损坏的文件
+                            // 普通文件（不变）
                             val parent = targetFile.parentFile
-                            if (parent != null && parent.exists() && Files.isSymbolicLink(parent.toPath())) {
-                                // 父目录是软链接，说明 UsrMerge 正确生效，直接通过软链接父目录进行文件物理创建
-                            } else {
-                                parent?.mkdirs()
-                            }
-
+                            if (parent != null && !Files.isSymbolicLink(parent.toPath())) parent.mkdirs()
                             try {
-                                if (targetFile.exists()) {
-                                    targetFile.delete()
-                                }
-                                FileOutputStream(targetFile).use { out ->
-                                    tarIn.copyTo(out)
-                                }
-                                // 赋予执行权限
-                                if (entry.mode and 0x49 != 0) { 
-                                    targetFile.setExecutable(true, false)
-                                }
+                                if (targetFile.exists()) targetFile.delete()
+                                FileOutputStream(targetFile).use { tarIn.copyTo(it) }
+                                if (entry.mode and 0x49 != 0) targetFile.setExecutable(true, false)
                             } catch (e: Exception) {
-                                Log.w(TAG, "普通文件写入失败 [非致命警告]: ${entry.name} (${e.message})")
+                                Log.w(TAG, "普通文件写入失败: ${entry.name} (${e.message})")
                             }
                         }
-
+    
                         count++
                         if (count % 300 == 0) {
-                            val progressPercent = 76 + (count / 15000f * 15f).toInt().coerceAtMost(15)
-                            emit("正在解压根文件系统 (已展开 $count 个文件)...", progressPercent)
+                            val p = 76 + (count / 15000f * 15f).toInt().coerceAtMost(15)
+                            emit("正在解压根文件系统 (已展开 $count 个文件)...", p)
                         }
-
                         entry = tarIn.nextEntry
                     }
-                    Log.d(TAG, "解压完毕，共解压 $count 个条目。")
+                    Log.d(TAG, "一阶段解压完毕，共 $count 条目，待处理硬链接: ${deferredHardLinks.size} 个")
                 }
             }
+        }
+    
+        // ── 二阶段：重试所有延迟硬链接 ──────────────────────────────
+        if (deferredHardLinks.isNotEmpty()) {
+            emit("处理延迟硬链接 (${deferredHardLinks.size} 个)...", 91)
+            var retryFailed = 0
+            for ((targetFile, linkName) in deferredHardLinks) {
+                val hardLinkTarget = File(destDir, linkName).canonicalFile
+                try {
+                    if (targetFile.exists() || Files.isSymbolicLink(targetFile.toPath())) targetFile.delete()
+                    targetFile.parentFile?.mkdirs()
+                    if (hardLinkTarget.exists()) {
+                        Os.link(hardLinkTarget.absolutePath, targetFile.absolutePath)
+                    } else {
+                        // target 仍不存在：退化为复制（兜底）
+                        hardLinkTarget.copyTo(targetFile, overwrite = true)
+                        Log.w(TAG, "硬链接 target 仍缺失，已降级为复制: $linkName -> ${targetFile.name}")
+                    }
+                } catch (e: Exception) {
+                    retryFailed++
+                    Log.w(TAG, "延迟硬链接最终失败: ${targetFile.name} -> $linkName (${e.message})")
+                }
+            }
+            Log.d(TAG, "二阶段处理完成，失败: $retryFailed / ${deferredHardLinks.size}")
         }
     }
 
