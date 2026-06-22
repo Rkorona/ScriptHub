@@ -152,10 +152,10 @@ fun DependencyManagerScreen(
     if (showInstaller) {
         DependencyInstallerSheet(
             existing = editingDep,
-            defaultType = selectedTab, // 默认选中的环境契合当前的 Tab
+            defaultType = selectedTab,
             onDismiss = { showInstaller = false },
             onSave = { savedDep ->
-                viewModel.addOrUpdateDependency(savedDep)
+                viewModel.installDependency(savedDep)
                 showInstaller = false
             }
         )
