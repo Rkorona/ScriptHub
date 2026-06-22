@@ -37,14 +37,31 @@ import com.scripthub.app.ui.theme.TerminalSuccess
 import com.scripthub.app.ui.theme.TerminalWarn
 import com.scripthub.app.utils.DistroPreference
 import com.scripthub.app.utils.ProotManager
+import com.scripthub.app.utils.PtyProcess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 
 private data class TermLine(val text: String, val color: Color, val isPrompt: Boolean = false)
+
+/**
+ * 剥除 ANSI/VT100 转义序列，保留可读文本。
+ * TUI 程序（fzf、vim、less 等）会输出大量光标控制码；显示前需清除，
+ * 否则终端输出区会出现乱码。
+ */
+private val ANSI_STRIP_RE = Regex(
+    "\u001B(?:" +
+    "\\[[0-?]*[ -/]*[@-~]" +          // CSI 序列（颜色、光标等）
+    "|\\][^\u0007\u001B]*(?:\u0007|\u001B\\\\)" + // OSC 序列（标题等）
+    "|[@-Z\\\\-_]" +                   // 双字节序列
+    ")"
+)
+private fun stripAnsi(text: String): String =
+    ANSI_STRIP_RE.replace(text, "").replace("\r", "")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,8 +79,9 @@ fun ShellTerminalScreen(contentPadding: PaddingValues) {
     var shellReady by remember { mutableStateOf(false) }
     var shellError by remember { mutableStateOf<String?>(null) }
 
-    var process: Process? by remember { mutableStateOf(null) }
-    var stdinWriter by remember { mutableStateOf<java.io.OutputStreamWriter?>(null) }
+    // PTY 会话（替代原先的 ProcessBuilder）
+    var ptySession  by remember { mutableStateOf<PtyProcess.Session?>(null) }
+    var stdinWriter by remember { mutableStateOf<OutputStreamWriter?>(null) }
 
     fun scrollToBottom() {
         scope.launch {
@@ -84,6 +102,7 @@ fun ShellTerminalScreen(contentPadding: PaddingValues) {
         isRunning = true
         scope.launch(Dispatchers.IO) {
             try {
+                // 发送命令 + 哨兵行，用于检测命令执行完毕
                 stdinWriter?.write("$trimmed\necho '---CMD_DONE---'\n")
                 stdinWriter?.flush()
             } catch (e: Exception) {
@@ -106,18 +125,29 @@ fun ShellTerminalScreen(contentPadding: PaddingValues) {
         }
 
         addLine("连接到 ${distro.displayName} 环境...", TerminalInfo)
-        addLine("提示：输入命令后按回车执行，Ctrl+C 效果用 kill 替代", TerminalWarn)
+        addLine("提示：输入命令后按回车执行，Ctrl+C 效果用停止按钮替代", TerminalWarn)
 
         withContext(Dispatchers.IO) {
             try {
-                val proc = ProotManager.buildProotProcess(
+                // 从 ProotManager 取出命令和环境变量，传给 PtyProcess
+                val pb = ProotManager.buildProotProcess(
                     context, distro, "bash --norc --noprofile"
                 ).apply {
                     environment()["PS1"] = ""
-                    redirectErrorStream(true)
-                }.start()
-                process = proc
-                val writer = java.io.OutputStreamWriter(proc.outputStream)
+                }
+                val cmd    = pb.command()
+                val envMap = pb.environment().toMap()
+
+                // 用 forkpty() 启动 proot，子进程拥有真实 PTY slave（/dev/tty 可用）
+                val session = PtyProcess.start(cmd, envMap, "/")
+                if (session == null) {
+                    withContext(Dispatchers.Main) {
+                        shellError = "PTY 分配失败，请检查设备日志"
+                    }
+                    return@withContext
+                }
+                ptySession  = session
+                val writer  = OutputStreamWriter(session.outputStream, Charsets.UTF_8)
                 stdinWriter = writer
 
                 withContext(Dispatchers.Main) {
@@ -125,9 +155,13 @@ fun ShellTerminalScreen(contentPadding: PaddingValues) {
                     addLine("─── 已连接到 ${distro.displayName} shell ───", TerminalSuccess)
                 }
 
-                val reader = BufferedReader(InputStreamReader(proc.inputStream))
+                // 从 PTY master 读取输出（含 ANSI 转义码，显示前剥除）
+                val reader = BufferedReader(
+                    InputStreamReader(session.inputStream, Charsets.UTF_8)
+                )
                 while (isActive) {
-                    val line = reader.readLine() ?: break
+                    val raw  = reader.readLine() ?: break
+                    val line = stripAnsi(raw)
                     if (line == "---CMD_DONE---") {
                         withContext(Dispatchers.Main) { isRunning = false }
                         continue
@@ -159,7 +193,7 @@ fun ShellTerminalScreen(contentPadding: PaddingValues) {
     DisposableEffect(Unit) {
         onDispose {
             try { stdinWriter?.write("exit\n"); stdinWriter?.flush() } catch (_: Exception) {}
-            try { process?.destroy() } catch (_: Exception) {}
+            ptySession?.destroy()
         }
     }
 
@@ -230,8 +264,8 @@ fun ShellTerminalScreen(contentPadding: PaddingValues) {
                 IconButton(
                     onClick = {
                         scope.launch(Dispatchers.IO) {
-                            stdinWriter?.write("\u0003")
-                            stdinWriter?.flush()
+                            // Ctrl+C → SIGINT 发给整个进程组
+                            ptySession?.sendSignal(2)
                         }
                         isRunning = false
                     },

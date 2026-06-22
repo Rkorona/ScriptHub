@@ -16,11 +16,19 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags("")
+            }
+        }
     }
     
     signingConfigs {
         create("release") {
-            // 从环境变量中读取路径和密码
             val keystorePath = System.getenv("KEYSTORE_PATH")
             if (!keystorePath.isNullOrEmpty()) {
                 storeFile = file(keystorePath)
@@ -48,9 +56,15 @@ android {
     }
     buildToolsVersion = "37.0.0"
 
+    externalNativeBuild {
+        cmake {
+            path("src/main/cpp/CMakeLists.txt")
+            version("3.22.1")
+        }
+    }
+
     packaging {
         jniLibs {
-            // 强制旧式打包：将 .so 解压到 nativeLibraryDir，确保 SELinux 允许执行
             useLegacyPackaging = true
         }
     }
@@ -59,24 +73,16 @@ android {
 dependencies {
     val room_version = "2.8.4"
     
-    // Room 数据库
     implementation("androidx.room:room-runtime:$room_version")
     implementation("androidx.room:room-ktx:$room_version")
     ksp("androidx.room:room-compiler:$room_version")
 
-    // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.1")
-
-    // XZ 解压（Android 系统 tar 不含 xz，需纯 Java 实现）
     implementation("org.tukaani:xz:1.9")
-
-    // Splash Screen API (backport to Android 10+)
     implementation("androidx.core:core-splashscreen:1.0.1")
-
-    // ViewModel 和 生命周期
     
-    implementation(libs.androidx.lifecycle.viewmodel.compose) // ViewModel Compose 支
-    implementation(libs.androidx.lifecycle.runtime.compose)   // 提供 collectAsStateWithLifecycle
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
     implementation(platform(libs.androidx.compose.bom))
