@@ -595,9 +595,13 @@ object ProotManager {
             prootBin,
             "--rootfs=$rootfsPath",
             "-0",
-            // 【去掉 --link2symlink】：该选项依赖 PROOT_TMP_DIR 创建硬链接，
-            // 在 SELinux Enforcing 的设备上被阻止，导致 can't chmod pr_tmp 错误。
-            // Android 内置存储（ext4）原生支持软链接，proot 不需要此选项。
+            // --link2symlink：将 guest 的 link() 硬链接调用转为 symlink()。
+            // Android SELinux 禁止 untrusted_app 对 app_data_file 调用 link()，
+            // dpkg 在安装软件包时会调用 link(status, status-old) 创建备份，
+            // 没有此选项会报 "Permission denied" 导致安装失败。
+            // PROOT_TMP_DIR 已在 buildProotProcess 里预先创建并设置权限，
+            // 指向宿主侧 filesDir/pr_tmp，proot 可直接写入，不存在路径歧义。
+            "--link2symlink",
             "-b", "/proc:/proc",
             "-b", "/dev:/dev",
             "-b", "/sys:/sys",
