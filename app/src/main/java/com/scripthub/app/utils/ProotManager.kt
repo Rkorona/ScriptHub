@@ -194,7 +194,7 @@ object ProotManager {
      * 我们只校验实实在在存在的二进制物理文件。
      * 因为绝对路径的软链接（如 /lib/...）在 Android 宿主机视角下全部是“损坏的死链”，
      * 且部分安全策略限制了软链接的查询。
-     * 只要容器对应的实体物理文件存在，PRoot 在启动时通过 --link2symlink 就可以在内存中完美代理它！
+     * 只要容器对应的实体物理文件存在，PRoot 通过显式 -b 绑定即可在容器内正确访问这些文件。
      */
     private fun verifyCriticalBinaries(rootfsDir: File): List<String> {
         val mustHave = mapOf(
@@ -528,15 +528,18 @@ object ProotManager {
         distro: DistroType,
         bashCommand: String
     ): List<String> {
-        val prootBin   = getProotBin(context).canonicalPath
-        val rootfsPath = getRootfsDir(context, distro).canonicalPath
+        val prootBin   = getProotBin(context).absolutePath
+        val rootfsDir  = getRootfsDir(context, distro)
+        val rootfsPath = rootfsDir.absolutePath
         val scriptsDir = "/sdcard/QLPanel/scripts"
 
         val commands = mutableListOf(
             prootBin,
             "--rootfs=$rootfsPath",
             "-0",
-            "--link2symlink",
+            // 【去掉 --link2symlink】：该选项依赖 PROOT_TMP_DIR 创建硬链接，
+            // 在 SELinux Enforcing 的设备上被阻止，导致 can't chmod pr_tmp 错误。
+            // Android 内置存储（ext4）原生支持软链接，proot 不需要此选项。
             "-b", "/proc:/proc",
             "-b", "/dev:/dev",
             "-b", "/sys:/sys",
@@ -545,16 +548,32 @@ object ProotManager {
         )
 
         // 检测并挂载 /apex，解决 Android 10+ 底层 runtime linker 依赖问题
-        val apexDir = File("/apex")
-        if (apexDir.exists()) {
-            commands.add("-b")
-            commands.add("/apex:/apex")
+        if (File("/apex").exists()) {
+            commands.addAll(listOf("-b", "/apex:/apex"))
+        }
+
+        // 【UsrMerge 显式绑定】：直接将 rootfs 中 usr/{bin,sbin,lib,lib64} 绑定到对应的
+        // /{bin,sbin,lib,lib64}，彻底绕过 lib->usr/lib 软链接是否存在的问题。
+        // 这样 proot 定位 ELF 解释器 /lib/ld-linux-aarch64.so.1 时不依赖任何软链接。
+        val usrMerge = listOf(
+            "bin"    to "usr/bin",
+            "sbin"   to "usr/sbin",
+            "lib"    to "usr/lib",
+            "lib64"  to "usr/lib64",
+            "lib32"  to "usr/lib32"
+        )
+        for ((guest, host) in usrMerge) {
+            val hostDir = File(rootfsDir, host)
+            if (hostDir.exists()) {
+                commands.addAll(listOf("-b", "${hostDir.absolutePath}:/$guest"))
+            }
         }
 
         commands.addAll(listOf(
             "-b", "$scriptsDir:/data/scripts",
             "-w", "/root",
-            "/bin/bash", "--login", "-c", bashCommand
+            // 【使用绝对路径 /usr/bin/bash】：不再依赖 bin->usr/bin 软链接来查找 bash
+            "/usr/bin/bash", "--login", "-c", bashCommand
         ))
 
         return commands
