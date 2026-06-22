@@ -138,7 +138,8 @@ fun MainScreen() {
         enabled = currentRoute == "ScriptEditor" ||
                   currentRoute == "EnvVars"       ||
                   currentRoute == "Dependencies"  ||
-                  currentRoute == "LinuxEnv"
+                  currentRoute == "LinuxEnv"      ||
+                  currentRoute == "Terminal"
     ) {
         currentRoute = when (currentRoute) {
             "ScriptEditor" -> "ScriptManager"
@@ -222,6 +223,7 @@ fun MainScreen() {
         "Dependencies"   -> "依赖管理"
         "ScriptEditor"   -> "代码编辑"
         "LinuxEnv"       -> "Linux 运行环境"
+        "Terminal"       -> "Shell 终端"
         else             -> "ScriptHub"
     }
 
@@ -250,7 +252,8 @@ fun MainScreen() {
             if (currentRoute != "ScriptEditor") {
                 val isSubScreen = currentRoute == "EnvVars"     ||
                                   currentRoute == "Dependencies" ||
-                                  currentRoute == "LinuxEnv"
+                                  currentRoute == "LinuxEnv"     ||
+                                  currentRoute == "Terminal"
                 ExpressiveNavigationBar(
                     currentRoute = if (isSubScreen) "Settings" else currentRoute,
                     onNavigate   = navigateTo
@@ -278,6 +281,7 @@ fun MainScreen() {
                     contentPadding  = innerPadding,
                     onSetupComplete = { navigateTo("Settings") }
                 )
+                "Terminal"       -> ShellTerminalScreen(contentPadding = innerPadding)
                 "ScriptEditor"   -> ScriptEditorScreen(
                     fileName   = editingFileName,
                     isFolder   = editingIsFolder,

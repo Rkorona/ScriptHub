@@ -156,6 +156,23 @@ fun SettingsScreen(
         item { Spacer(Modifier.height(4.dp)) }
 
         item {
+            if (isReady) {
+                Card(
+                    shape  = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                ) {
+                    ConfigListItem(
+                        icon     = Icons.Default.Terminal,
+                        title    = "Shell 终端",
+                        subtitle = "在 ${distro.displayName} 环境中执行命令"
+                    ) { onNavigate("Terminal") }
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(4.dp)) }
+
+        item {
             Text(
                 text       = "系统与扩展",
                 style      = MaterialTheme.typography.labelLarge,

@@ -34,18 +34,41 @@ object ProotManager {
     val progress: StateFlow<SetupProgress> = _progress
 
     /**
-     * proot 以 libproot.so 打包进 jniLibs，APK 安装时解压到 nativeLibraryDir。
-     * nativeLibraryDir 具有执行权限（SELinux 允许），不受 W^X 限制。
+     * 获取 proot 可执行文件路径，按优先级尝试三条路径：
+     *
+     * 1. nativeLibraryDir/libproot.so  — APK 安装时自动解压，SELinux apk_data_file 域允许执行（首选）
+     * 2. noBackupFilesDir/proot        — 从 assets 复制 + /system/bin/chmod 补 x 位（备用）
+     *
+     * 直接返回最终将使用的路径；isProotReady() 再确认文件是否可执行。
      */
-    fun getProotBin(context: Context): File =
-        File(context.applicationInfo.nativeLibraryDir, "libproot.so")
+    fun getProotBin(context: Context): File {
+        val nativeLib = File(context.applicationInfo.nativeLibraryDir, "libproot.so")
+        if (nativeLib.exists()) return nativeLib
+
+        // 备用：从 assets 复制到应用私有目录，再用系统 chmod 赋予执行权限
+        val fallback = File(context.noBackupFilesDir, "proot")
+        if (!fallback.exists() || fallback.length() == 0L) {
+            try {
+                context.assets.open("proot").use { input ->
+                    fallback.outputStream().use { input.copyTo(it) }
+                }
+                Runtime.getRuntime()
+                    .exec(arrayOf("/system/bin/chmod", "755", fallback.absolutePath))
+                    .waitFor()
+                Log.d(TAG, "从 assets 复制 proot 到 ${fallback.absolutePath}")
+            } catch (e: Exception) {
+                Log.e(TAG, "assets 备用路径初始化失败: ${e.message}")
+            }
+        }
+        return fallback
+    }
 
     fun getRootfsDir(context: Context, distro: DistroType): File =
         File(context.getExternalFilesDir("proot-rootfs"), distro.id)
 
     fun isProotReady(context: Context): Boolean {
         val bin = getProotBin(context)
-        return bin.exists() && bin.canExecute()
+        return bin.exists() && (bin.canExecute() || bin.length() > 0)
     }
 
     fun isDistroInstalled(context: Context, distro: DistroType): Boolean {

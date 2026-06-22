@@ -47,6 +47,13 @@ android {
         compose = true
     }
     buildToolsVersion = "37.0.0"
+
+    packaging {
+        jniLibs {
+            // 强制旧式打包：将 .so 解压到 nativeLibraryDir，确保 SELinux 允许执行
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
