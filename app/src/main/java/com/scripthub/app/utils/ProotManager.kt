@@ -133,8 +133,28 @@ object ProotManager {
 
                 emit("配置系统运行环境...", 92)
                 configureRootfs(context, rootfsDir, distro)
+
+                // 解压完立刻校验，缺关键文件就直接清掉重来，
+                // 不要让一个半成品环境顶着 .scripthub_installed 标记继续留着
+                val missingFresh = verifyCriticalBinaries(rootfsDir)
+                if (missingFresh.isNotEmpty()) {
+                    rootfsDir.deleteRecursively()
+                    throw IOException(
+                        "根文件系统解压不完整，缺少: ${missingFresh.joinToString("、")}。" +
+                            "可能是网络中断或存储空间不足导致，请重试安装"
+                    )
+                }
             } else {
-                emit("${distro.displayName} 已安装，跳过下载", 92)
+                emit("${distro.displayName} 已安装，正在校验完整性...", 92)
+                fixUsrMergeSymlinks(rootfsDir)
+
+                val missingExisting = verifyCriticalBinaries(rootfsDir)
+                if (missingExisting.isNotEmpty()) {
+                    throw IOException(
+                        "检测到已安装的 ${distro.displayName} 缺少: ${missingExisting.joinToString("、")}，" +
+                            "运行环境不完整。请到设置中卸载该环境后重新安装"
+                    )
+                }
             }
 
             DistroPreference.setDistro(context, distro)
@@ -152,6 +172,31 @@ object ProotManager {
         val dir = getRootfsDir(context, distro)
         if (dir.exists()) dir.deleteRecursively()
         DistroPreference.resetSetup(context)
+    }
+
+    /**
+     * 解压/安装后的最小完整性校验：只检查"缺了就根本没法启动 shell"的几个关键文件。
+     * tar 解压遇到部分条目失败时常常只返回 exit code 1（之前被当成警告放过），
+     * 加上下载被打断也可能漏掉文件——不在安装阶段把这些拦住，
+     * 用户只会在真正点进 Shell 终端的那一刻才看到 execve 报错，定位成本很高。
+     */
+    private fun verifyCriticalBinaries(rootfsDir: File): List<String> {
+        val mustHave = mapOf(
+            "bash 可执行文件" to listOf("usr/bin/bash", "bin/bash"),
+            "动态链接器 ld-linux" to listOf(
+                "lib/ld-linux-aarch64.so.1",
+                "usr/lib/ld-linux-aarch64.so.1",
+                "lib/aarch64-linux-gnu/ld-linux-aarch64.so.1",
+                "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1"
+            ),
+            "libc" to listOf(
+                "lib/aarch64-linux-gnu/libc.so.6",
+                "usr/lib/aarch64-linux-gnu/libc.so.6"
+            )
+        )
+        return mustHave.filterValues { candidates ->
+            candidates.none { File(rootfsDir, it).exists() }
+        }.keys.toList()
     }
 
     private fun emit(phase: String, percent: Int) {
@@ -213,6 +258,13 @@ object ProotManager {
                     onProgress?.invoke(downloaded, total)
                 }
             }
+        }
+
+        // 下载完整性校验：网络中断时 read() 会直接返回 -1 提前结束循环，
+        // 之前这里不校验的话，一个下载到一半的 tar.xz 会被当成"下载成功"直接送去解压
+        if (total > 0 && downloaded != total) {
+            dest.delete()
+            throw IOException("下载不完整: 期望 $total 字节，实际收到 $downloaded 字节，网络可能中断了，请重试")
         }
     }
 
