@@ -50,6 +50,7 @@ import com.scripthub.app.ui.components.TerminalConsoleBottomSheet
 import com.scripthub.app.ui.components.LogViewerBottomSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.scripthub.app.utils.CronTranslator
 import com.scripthub.app.utils.CronNextRunCalculator
 import com.scripthub.app.utils.SchedulerPreference
