@@ -61,6 +61,10 @@ import com.scripthub.app.ui.theme.TypeColorNode
 import com.scripthub.app.ui.theme.TypeColorOther
 import com.scripthub.app.ui.theme.StatusRunning
 
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+
 // ─────────────────────────────────────────────────────────────
 // 任务启停状态
 // ─────────────────────────────────────────────────────────────
@@ -141,6 +145,20 @@ fun ScheduledTaskManagerScreen(
     // 定时任务列表：从 Room 实时订阅，持久化到数据库
     val dbTasks by taskDao.getAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val tasksList = remember(dbTasks) { dbTasks.map { it.toUiModel() } }
+
+    val pullRefreshState = rememberPullToRefreshState()
+    if (pullRefreshState.isRefreshing) {
+        LaunchedEffect(true) {
+            withContext(Dispatchers.IO) {
+                dbTasks.filter { it.isEnabled }.forEach { task ->
+                    val computed = CronNextRunCalculator.nextRunTime(task.cronExpression)
+                    taskDao.update(task.copy(nextRunTime = computed))
+                }
+            }
+            kotlinx.coroutines.delay(500)
+            pullRefreshState.endRefresh()
+        }
+    }
 
     // 对数据库中仍显示"计算中..."的老任务补算下次执行时间，并每分钟刷新一次所有已启用任务的下次执行时间
     LaunchedEffect(dbTasks) {
@@ -274,33 +292,39 @@ fun ScheduledTaskManagerScreen(
             if (filteredTasks.isEmpty()) {
                 EmptyTasksState(modifier = Modifier.fillMaxWidth().weight(1f))
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(filteredTasks, key = { it.id }) { task ->
-                        CronTaskCard(
-                            task = task,
-                            onStatusToggle = { enabled ->
-                                scope.launch(Dispatchers.IO) {
-                                    val updatedEntity = task.copy(
-                                        initialStatus = if (enabled) CronTaskStatus.Enabled else CronTaskStatus.Disabled
-                                    ).toEntity()
-                                    taskDao.update(updatedEntity)
-                                    if (enabled) {
-                                        TaskSchedulerManager.scheduleTask(context, updatedEntity)
-                                    } else {
-                                        TaskSchedulerManager.cancelTask(context, task.id)
+                Box(modifier = Modifier.fillMaxWidth().weight(1f).nestedScroll(pullRefreshState.nestedScrollConnection)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredTasks, key = { it.id }) { task ->
+                            CronTaskCard(
+                                task = task,
+                                onStatusToggle = { enabled ->
+                                    scope.launch(Dispatchers.IO) {
+                                        val updatedEntity = task.copy(
+                                            initialStatus = if (enabled) CronTaskStatus.Enabled else CronTaskStatus.Disabled
+                                        ).toEntity()
+                                        taskDao.update(updatedEntity)
+                                        if (enabled) {
+                                            TaskSchedulerManager.scheduleTask(context, updatedEntity)
+                                        } else {
+                                            TaskSchedulerManager.cancelTask(context, task.id)
+                                        }
                                     }
-                                }
-                            },
-                            onExecuteNow = { activeTerminalTask = task },
-                            onViewLog = { activeLogViewerTask = task },
-                            onEdit = { editorTarget = task },
-                            onDelete = { pendingDelete = task }
-                        )
+                                },
+                                onExecuteNow = { activeTerminalTask = task },
+                                onViewLog = { activeLogViewerTask = task },
+                                onEdit = { editorTarget = task },
+                                onDelete = { pendingDelete = task }
+                            )
+                        }
                     }
+                    PullToRefreshContainer(
+                        state = pullRefreshState,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
                 }
             }
         }

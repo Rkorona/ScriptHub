@@ -59,6 +59,11 @@ import com.scripthub.app.ui.theme.TerminalSuccess
 import com.scripthub.app.utils.WorkdirPreference
 import com.scripthub.app.viewmodel.ScriptViewModel
 
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import kotlinx.coroutines.delay
+
 enum class DependencyStatus { None, Configured, Installed, Error }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -81,6 +86,15 @@ fun ScriptManagerScreen(
     var activeLogViewerScript by remember { mutableStateOf<ScriptEntity?>(null) }
     var scriptPendingDelete by remember { mutableStateOf<ScriptEntity?>(null) }
     var isFabExpanded by remember { mutableStateOf(false) }
+
+    val pullRefreshState = rememberPullToRefreshState()
+    if (pullRefreshState.isRefreshing) {
+        LaunchedEffect(true) {
+            viewModel.syncFilesWithDatabase()
+            delay(500)
+            pullRefreshState.endRefresh()
+        }
+    }
 
     // ─── 🛠️ 新建文件的表单对话框状态 ───
     var showSingleFileDialog by remember { mutableStateOf(false) }
@@ -139,14 +153,6 @@ fun ScriptManagerScreen(
                                 folderName = ""
                                 folderEntryPoint = "main.py"
                                 showFolderDialog = true // 唤醒文件夹工程创建对话框
-                            }
-                        )
-                        FabMenuOption(
-                            label = "物理刷新对齐",
-                            icon = Icons.Default.Build,
-                            onClick = { 
-                                isFabExpanded = false
-                                viewModel.syncFilesWithDatabase() // 手动触发强制扫描
                             }
                         )
                     }
@@ -241,24 +247,30 @@ fun ScriptManagerScreen(
                     .filter { (selectedFilter == "全部" || it.type == selectedFilter) && it.name.contains(searchQuery, ignoreCase = true) }
                     .sortedByDescending { it.isRunning }
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (filteredList.isEmpty()) {
-                        item { EmptyScriptsState(hasAnyScripts = scripts.isNotEmpty()) }
-                    } else {
-                        items(filteredList, key = { it.id }) { script ->
-                            ScriptCard(
-                                script = script,
-                                onExecuteNow = { activeTerminalScript = script },
-                                onOpenDetail = { onOpenDetail(script) },
-                                onViewLogs = { activeLogViewerScript = script },
-                                onDeleteRequest = { scriptPendingDelete = script }
-                            )
+                Box(modifier = Modifier.fillMaxWidth().weight(1f).nestedScroll(pullRefreshState.nestedScrollConnection)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 80.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (filteredList.isEmpty()) {
+                            item { EmptyScriptsState(hasAnyScripts = scripts.isNotEmpty()) }
+                        } else {
+                            items(filteredList, key = { it.id }) { script ->
+                                ScriptCard(
+                                    script = script,
+                                    onExecuteNow = { activeTerminalScript = script },
+                                    onOpenDetail = { onOpenDetail(script) },
+                                    onViewLogs = { activeLogViewerScript = script },
+                                    onDeleteRequest = { scriptPendingDelete = script }
+                                )
+                            }
                         }
                     }
+                    PullToRefreshContainer(
+                        state = pullRefreshState,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
                 }
             }
 
