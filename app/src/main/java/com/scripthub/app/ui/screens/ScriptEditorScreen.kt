@@ -30,6 +30,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.OffsetMapping
 import com.scripthub.app.utils.FileHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -175,14 +180,16 @@ fun ScriptEditorScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var codeText by remember { mutableStateOf("") }
+    var codeTextValue by remember { mutableStateOf(TextFieldValue("")) }
+    val codeText = codeTextValue.text
     var isSaving by remember { mutableStateOf(false) }
     val lang = remember(fileName, entryPoint) { detectLang(if (isFolder) entryPoint else fileName) }
 
     LaunchedEffect(fileName) {
-        withContext(Dispatchers.IO) {
-            codeText = FileHelper.readScriptContent(fileName, isFolder, entryPoint)
+        val text = withContext(Dispatchers.IO) {
+            FileHelper.readScriptContent(fileName, isFolder, entryPoint)
         }
+        codeTextValue = TextFieldValue(text)
     }
 
     val colors = MaterialTheme.colorScheme
@@ -339,21 +346,49 @@ fun ScriptEditorScreen(
                 )
 
                 // ── 代码输入区 ──
-                val highlighted = remember(codeText, lang) {
-                    syntaxHighlight(
-                        text = codeText,
-                        lang = lang,
-                        keywordColor = keywordColor,
-                        stringColor = stringColor,
-                        commentColor = commentColor,
-                        numberColor = numberColor,
-                        defaultColor = codeDefaultColor
-                    )
-                }
-
                 BasicTextField(
-                    value = codeText,
-                    onValueChange = { codeText = it },
+                    value = codeTextValue,
+                    onValueChange = { newValue ->
+                        val oldText = codeTextValue.text
+                        val newText = newValue.text
+
+                        if (newText.contains("\t")) {
+                            val beforeCursor = newText.substring(0, newValue.selection.start)
+                            val afterCursor = newText.substring(newValue.selection.start)
+                            val replacedBefore = beforeCursor.replace("\t", "    ")
+                            val replacedAfter = afterCursor.replace("\t", "    ")
+                            val tabReplaced = replacedBefore + replacedAfter
+                            codeTextValue = newValue.copy(text = tabReplaced, selection = TextRange(replacedBefore.length))
+                        } else if (newText.length - oldText.length == 1 && newValue.selection.start > 0 && newText[newValue.selection.start - 1] == '\n') {
+                            // 换行自动缩进
+                            val textBeforeNewline = newText.substring(0, newValue.selection.start - 1)
+                            val lastLine = textBeforeNewline.substringAfterLast('\n')
+                            val currentIndent = lastLine.takeWhile { it == ' ' }
+                            val extraIndent = if (lastLine.trimEnd().endsWith(":") || lastLine.trimEnd().endsWith("{")) "    " else ""
+                            val fullIndent = currentIndent + extraIndent
+
+                            if (fullIndent.isNotEmpty()) {
+                                val updatedText = newText.substring(0, newValue.selection.start) + fullIndent + newText.substring(newValue.selection.start)
+                                codeTextValue = TextFieldValue(updatedText, TextRange(newValue.selection.start + fullIndent.length))
+                            } else {
+                                codeTextValue = newValue
+                            }
+                        } else {
+                            codeTextValue = newValue
+                        }
+                    },
+                    visualTransformation = { annotatedString ->
+                        val highlighted = syntaxHighlight(
+                            text = annotatedString.text,
+                            lang = lang,
+                            keywordColor = keywordColor,
+                            stringColor = stringColor,
+                            commentColor = commentColor,
+                            numberColor = numberColor,
+                            defaultColor = codeDefaultColor
+                        )
+                        TransformedText(highlighted, OffsetMapping.Identity)
+                    },
                     textStyle = TextStyle(
                         color = codeDefaultColor,
                         fontFamily = FontFamily.Monospace,
