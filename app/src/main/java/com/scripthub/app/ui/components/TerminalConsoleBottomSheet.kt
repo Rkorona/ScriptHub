@@ -98,6 +98,7 @@ fun TerminalConsoleBottomSheet(
                 withContext(Dispatchers.Main) {
                     logs.add(LogLine("[EXEC] 启动 proot 进程...", TerminalExec))
                 }
+                com.scripthub.app.utils.ScriptForegroundService.start(context, "正在手动执行: $taskName")
 
                 process = ProotRunner.executeScript(
                     context    = context,
@@ -152,6 +153,7 @@ fun TerminalConsoleBottomSheet(
                     logs.add(LogLine("[ERROR] 进程异常: ${e.message}", TerminalError))
                 }
             } finally {
+                com.scripthub.app.utils.ScriptForegroundService.stop(context)
                 withContext(NonCancellable) {
                     try {
                         reader?.close()

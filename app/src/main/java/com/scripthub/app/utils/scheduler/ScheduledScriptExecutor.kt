@@ -46,6 +46,7 @@ object ScheduledScriptExecutor {
 
         try {
             Log.i(TAG, "[$taskName] 启动 proot 进程执行脚本: $scriptName")
+            com.scripthub.app.utils.ScriptForegroundService.start(context, "正在定时执行: $taskName")
 
             process = ProotRunner.executeScript(
                 context    = context,
@@ -75,6 +76,7 @@ object ScheduledScriptExecutor {
             Log.e(TAG, "[$taskName] 执行异常: ${e.message}")
             rawLines.add("[ERROR] 定时任务执行异常: ${e.message}")
         } finally {
+            com.scripthub.app.utils.ScriptForegroundService.stop(context)
             try { reader?.close() } catch (_: Exception) {}
             try { process?.destroy() } catch (_: Exception) {}
         }

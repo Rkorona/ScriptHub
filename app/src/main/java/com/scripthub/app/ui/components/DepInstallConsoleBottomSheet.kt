@@ -72,6 +72,7 @@ fun DepInstallConsoleBottomSheet(
                 withContext(Dispatchers.Main) {
                     logs.add(LogLine("[EXEC] 正在启动 proot 容器...", TerminalInfo))
                 }
+                com.scripthub.app.utils.ScriptForegroundService.start(context, "正在安装依赖: ${dep.name}")
 
                 process = ProotManager.buildProotProcess(context, distro, cmd)
                     .redirectErrorStream(true)
@@ -105,6 +106,7 @@ fun DepInstallConsoleBottomSheet(
                     logs.add(LogLine("[ERROR] 安装异常: ${e.message}", TerminalError))
                 }
             } finally {
+                com.scripthub.app.utils.ScriptForegroundService.stop(context)
                 withContext(NonCancellable) {
                     try { reader?.close(); process?.destroy() } catch (_: Exception) {}
 
