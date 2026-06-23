@@ -34,9 +34,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.scripthub.app.utils.DistroPreference
 import com.scripthub.app.utils.FileHelper
 import com.scripthub.app.utils.ProotManager
+import com.scripthub.app.utils.ShizukuHelper
 import com.scripthub.app.utils.WorkdirPreference
 
 @Composable
@@ -50,6 +52,8 @@ fun SettingsScreen(
 
     var workdir           by remember { mutableStateOf(WorkdirPreference.getWorkdir(context)) }
     var showWorkdirDialog by remember { mutableStateOf(false) }
+
+    val shizukuState by ShizukuHelper.state.collectAsStateWithLifecycle()
 
     LazyColumn(
         modifier = Modifier
@@ -198,6 +202,11 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Black,
                 modifier   = Modifier.padding(start = 8.dp, bottom = 4.dp)
             )
+
+            ShizukuCard(state = shizukuState)
+
+            Spacer(Modifier.height(12.dp))
+
             Card(
                 shape  = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
@@ -296,6 +305,77 @@ private fun WorkdirEditDialog(
             TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
+}
+
+@Composable
+private fun ShizukuCard(state: ShizukuHelper.State) {
+    val containerColor = when (state) {
+        ShizukuHelper.State.READY                -> MaterialTheme.colorScheme.tertiaryContainer
+        ShizukuHelper.State.CONNECTED_NO_PERMISSION -> MaterialTheme.colorScheme.secondaryContainer
+        ShizukuHelper.State.UNAVAILABLE          -> MaterialTheme.colorScheme.surfaceContainer
+    }
+    val iconTint = when (state) {
+        ShizukuHelper.State.READY                -> MaterialTheme.colorScheme.onTertiaryContainer
+        ShizukuHelper.State.CONNECTED_NO_PERMISSION -> MaterialTheme.colorScheme.onSecondaryContainer
+        ShizukuHelper.State.UNAVAILABLE          -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val statusText = when (state) {
+        ShizukuHelper.State.READY                -> "已授权 · 可访问 Android/data 目录"
+        ShizukuHelper.State.CONNECTED_NO_PERMISSION -> "已连接，但尚未授权 · 点击授权"
+        ShizukuHelper.State.UNAVAILABLE          -> "未检测到 Shizuku · 请先启动 Shizuku 服务"
+    }
+    val clickable = state == ShizukuHelper.State.CONNECTED_NO_PERMISSION
+
+    Card(
+        shape  = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (clickable) Modifier.clickable { ShizukuHelper.requestPermission() }
+                    else Modifier
+                )
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(iconTint.copy(alpha = 0.15f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.Security,
+                    contentDescription = null,
+                    tint     = iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text       = "Shizuku 提权",
+                    style      = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color      = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text  = statusText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (clickable) {
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+    }
 }
 
 @Composable

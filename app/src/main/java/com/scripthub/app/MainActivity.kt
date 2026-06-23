@@ -10,12 +10,14 @@ import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.scripthub.app.ui.screens.MainScreen
 import com.scripthub.app.ui.theme.ScriptHubTheme
+import com.scripthub.app.utils.ShizukuHelper
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        ShizukuHelper.init()
         setContent {
             ScriptHubTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -23,5 +25,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        ShizukuHelper.destroy()
     }
 }
