@@ -53,6 +53,7 @@ android {
     }
     buildFeatures {
         compose = true
+        aidl = true
     }
     buildToolsVersion = "37.0.0"
 
