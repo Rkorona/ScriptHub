@@ -33,6 +33,7 @@ import com.scripthub.app.ui.components.GlobalLogBottomSheet
 import com.scripthub.app.utils.CronNextRunCalculator
 import com.scripthub.app.utils.DistroPreference
 import com.scripthub.app.utils.FileHelper
+import com.scripthub.app.utils.ScriptForegroundService
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -263,7 +264,16 @@ fun MainScreen() {
     ) { innerPadding ->
         Crossfade(targetState = currentRoute, label = "Route Transition") { route ->
             when (route) {
-                "Dashboard"      -> DashboardScreen(state = dashboardState, contentPadding = innerPadding)
+                "Dashboard"      -> DashboardScreen(
+                    state              = dashboardState,
+                    contentPadding     = innerPadding,
+                    onRestartService   = {
+                        ScriptForegroundService.stop(context)
+                        ScriptForegroundService.start(context, "面板守护服务已重启")
+                    },
+                    onViewServiceLogs  = { showGlobalLog = true },
+                    onViewAllLogs      = { showGlobalLog = true }
+                )
                 "ScriptManager"  -> ScriptManagerScreen(
                     contentPadding = innerPadding,
                     onOpenDetail   = { script ->
