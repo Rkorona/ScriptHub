@@ -1,0 +1,13 @@
+uploads = []
+
+[[generated]]
+id = "TuPdOFKkWLhedOOIgw30g"
+uri = "file://attached_assets/icon_candidate.png"
+type = "image"
+title = "scripthub app icon"
+
+[[outputs]]
+id = "xzzY7uD77aqxwI9n-rlnx"
+uri = "file://attached_assets/icon_candidate.png"
+type = "image"
+title = "新版 Script Hub 图标"

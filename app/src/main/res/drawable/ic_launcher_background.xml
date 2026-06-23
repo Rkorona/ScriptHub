@@ -6,7 +6,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Deep dark background gradient -->
+    <!-- Deep navy background gradient -->
     <path android:pathData="M0,0 L108,0 L108,108 L0,108 Z">
         <aapt:attr name="android:fillColor">
             <gradient
@@ -15,33 +15,23 @@
                 android:endX="108"
                 android:endY="108"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#FF0F201A" />
-                <item android:offset="1.0" android:color="#FF071210" />
+                <item android:offset="0.0" android:color="#FF0D1B3E" />
+                <item android:offset="1.0" android:color="#FF061020" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Subtle mint glow in center -->
-    <path android:pathData="M54,54 m-40,0 a40,40 0 1,0 80,0 a40,40 0 1,0 -80,0">
+    <!-- Subtle radial glow at center -->
+    <path android:pathData="M54,54 m-45,0 a45,45 0 1,0 90,0 a45,45 0 1,0 -90,0">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:centerX="54"
                 android:centerY="54"
-                android:gradientRadius="40"
+                android:gradientRadius="45"
                 android:type="radial">
-                <item android:offset="0.0" android:color="#0C59DBB9" />
-                <item android:offset="1.0" android:color="#0059DBB9" />
+                <item android:offset="0.0" android:color="#1A4A90E2" />
+                <item android:offset="1.0" android:color="#004A90E2" />
             </gradient>
         </aapt:attr>
     </path>
-
-    <!-- Corner accent dots -->
-    <path android:fillColor="#1A59DBB9"
-        android:pathData="M18,18 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
-    <path android:fillColor="#1A59DBB9"
-        android:pathData="M90,18 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
-    <path android:fillColor="#1A59DBB9"
-        android:pathData="M18,90 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
-    <path android:fillColor="#1A59DBB9"
-        android:pathData="M90,90 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
 </vector>
