@@ -134,11 +134,7 @@ fun DashboardScreen(
             }
         }
 
-        item(key = "resources") {
-            AnimatedSection(visible, 180) {
-                ResourceCard(state)
-            }
-        }
+
 
         item(key = "logs") {
             AnimatedSection(visible, 240) {
@@ -280,51 +276,7 @@ private fun StatCard(title: String, value: String, caption: String?, icon: Image
     }
 }
 
-// =====================================================================================
-// 4. 系统资源
-// =====================================================================================
 
-@Composable
-private fun ResourceCard(state: DashboardUiState) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = RoundedCornerShape(28.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("系统资源", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            ResourceRow("RAM 内存占用", state.ramUsedGb, state.ramTotalGb)
-            ResourceRow("沙盒存储空间", state.storageUsedGb, state.storageTotalGb)
-        }
-    }
-}
-
-@Composable
-private fun ResourceRow(label: String, usedGb: Float, totalGb: Float) {
-    val pct = (usedGb / totalGb).coerceIn(0f, 1f)
-    val barColor = when {
-        pct >= 0.85f -> MaterialTheme.colorScheme.error
-        pct >= 0.6f -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.primary
-    }
-    val animatedProgress by animateFloatAsState(targetValue = pct, animationSpec = tween(700, easing = FastOutSlowInEasing))
-
-    Column {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("${(pct * 100).roundToInt()}% (${usedGb.trimZero()}G / ${totalGb.trimZero()}G)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-        }
-        Spacer(Modifier.height(8.dp))
-        LinearProgressIndicator(
-            progress = { animatedProgress },
-            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(50)),
-            color = barColor,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    }
-}
-
-private fun Float.trimZero(): String = if (this == this.toInt().toFloat()) this.toInt().toString() else this.toString()
 
 // =====================================================================================
 // 5. 终端日志卡
