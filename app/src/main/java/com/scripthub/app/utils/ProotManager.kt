@@ -589,7 +589,7 @@ object ProotManager {
         val prootBin   = getProotBin(context).absolutePath
         val rootfsDir  = getRootfsDir(context, distro)
         val rootfsPath = rootfsDir.absolutePath
-        val scriptsDir = "/sdcard/QLPanel/scripts"
+        val scriptsDir = WorkdirPreference.getScriptsDir(context)
 
         val commands = mutableListOf(
             prootBin,

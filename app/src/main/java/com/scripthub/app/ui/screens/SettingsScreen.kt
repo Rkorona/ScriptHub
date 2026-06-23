@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Security
@@ -29,11 +30,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scripthub.app.utils.DistroPreference
+import com.scripthub.app.utils.FileHelper
 import com.scripthub.app.utils.ProotManager
+import com.scripthub.app.utils.WorkdirPreference
 
 @Composable
 fun SettingsScreen(
@@ -43,6 +47,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val distro  = remember { DistroPreference.getDistro(context) }
     val isReady = remember { ProotManager.isDistroInstalled(context, distro) }
+
+    var workdir           by remember { mutableStateOf(WorkdirPreference.getWorkdir(context)) }
+    var showWorkdirDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -81,10 +88,10 @@ fun SettingsScreen(
                     title          = "依赖管理",
                     subtitle       = "Node / Python 等运行时包",
                     icon           = Icons.Default.Extension,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor   = MaterialTheme.colorScheme.onTertiaryContainer,
-                    iconTint       = MaterialTheme.colorScheme.tertiary,
-                    onClick        = { onNavigate("Dependencies") }
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor   = MaterialTheme.colorScheme.onSecondaryContainer,
+                    iconTint       = MaterialTheme.colorScheme.secondary,
+                    onClick        = { onNavigate("DependencyManager") }
                 )
             }
         }
@@ -103,21 +110,22 @@ fun SettingsScreen(
                 shape  = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
             ) {
+                val prootContainerColor = if (isReady)
+                    MaterialTheme.colorScheme.tertiaryContainer
+                else
+                    MaterialTheme.colorScheme.errorContainer
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onNavigate("LinuxEnv") }
-                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
                             .size(42.dp)
-                            .background(
-                                if (isReady) MaterialTheme.colorScheme.tertiaryContainer
-                                else MaterialTheme.colorScheme.errorContainer,
-                                CircleShape
-                            ),
+                            .background(prootContainerColor, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -153,19 +161,29 @@ fun SettingsScreen(
             }
         }
 
-        item { Spacer(Modifier.height(4.dp)) }
-
         item {
-            if (isReady) {
-                Card(
-                    shape  = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-                ) {
+            Card(
+                shape  = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Column(Modifier.padding(vertical = 8.dp)) {
                     ConfigListItem(
-                        icon     = Icons.Default.Terminal,
-                        title    = "Shell 终端",
-                        subtitle = "在 ${distro.displayName} 环境中执行命令"
-                    ) { onNavigate("Terminal") }
+                        icon     = Icons.Default.Folder,
+                        title    = "工作目录",
+                        subtitle = workdir
+                    ) { showWorkdirDialog = true }
+
+                    if (isReady) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                            color    = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                        ConfigListItem(
+                            icon     = Icons.Default.Terminal,
+                            title    = "Shell 终端",
+                            subtitle = "在 ${distro.displayName} 环境中执行命令"
+                        ) { onNavigate("Terminal") }
+                    }
                 }
             }
         }
@@ -212,6 +230,72 @@ fun SettingsScreen(
             }
         }
     }
+
+    if (showWorkdirDialog) {
+        WorkdirEditDialog(
+            current  = workdir,
+            onDismiss = { showWorkdirDialog = false },
+            onConfirm = { newPath ->
+                WorkdirPreference.setWorkdir(context, newPath)
+                FileHelper.init(context)
+                workdir = WorkdirPreference.getWorkdir(context)
+                showWorkdirDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun WorkdirEditDialog(
+    current: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var input by remember { mutableStateOf(current) }
+    val isValid = input.trim().startsWith("/") && input.trim().length > 1
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon  = { Icon(Icons.Default.Folder, contentDescription = null) },
+        title = { Text("自定义工作目录", fontWeight = FontWeight.Bold) },
+        text  = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "脚本文件存放在 <工作目录>/scripts/ 下，proot 会将该目录挂载至容器内 /data/scripts。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value         = input,
+                    onValueChange = { input = it },
+                    label         = { Text("绝对路径") },
+                    placeholder   = { Text("/sdcard/QLPanel") },
+                    singleLine    = true,
+                    isError       = !isValid,
+                    supportingText = if (!isValid) {
+                        { Text("请输入以 / 开头的绝对路径") }
+                    } else null,
+                    textStyle     = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+                    modifier      = Modifier.fillMaxWidth(),
+                    shape         = RoundedCornerShape(12.dp)
+                )
+                TextButton(
+                    onClick = { input = WorkdirPreference.defaultWorkdir() },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text("重置为默认 (${WorkdirPreference.defaultWorkdir()})", fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(input.trim()) }, enabled = isValid) {
+                Text("确认", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
 }
 
 @Composable

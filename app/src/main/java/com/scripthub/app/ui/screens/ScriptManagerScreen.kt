@@ -56,6 +56,7 @@ import com.scripthub.app.ui.components.LogViewerBottomSheet
 import com.scripthub.app.ui.theme.TypeColorPython
 import com.scripthub.app.ui.theme.StatusRunning
 import com.scripthub.app.ui.theme.TerminalSuccess
+import com.scripthub.app.utils.WorkdirPreference
 import com.scripthub.app.viewmodel.ScriptViewModel
 
 enum class DependencyStatus { None, Configured, Installed, Error }
@@ -303,7 +304,7 @@ fun ScriptManagerScreen(
             onDismissRequest = { scriptPendingDelete = null },
             icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("物理删除「${target.name}」？") },
-            text = { Text("这将永久从手机存储 (/sdcard/QLPanel/scripts) 中彻底抹除此文件/文件夹。此操作无法撤销。") },
+            text = { Text("这将永久从手机存储中彻底抹除此文件/文件夹。此操作无法撤销。") },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.deleteScript(target)
@@ -440,6 +441,8 @@ private fun FabMenuOption(label: String, icon: androidx.compose.ui.graphics.vect
 
 @Composable
 private fun EmptyScriptsState(hasAnyScripts: Boolean) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val workdir = WorkdirPreference.getWorkdir(context)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -461,7 +464,7 @@ private fun EmptyScriptsState(hasAnyScripts: Boolean) {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = if (hasAnyScripts) "系统未扫描到符合后缀的文件，请先创建或从电脑端导入" else "点击右下角“添加/新建”在 /sdcard/QLPanel 下创建第一个代码文件",
+            text = if (hasAnyScripts) "系统未扫描到符合后缀的文件，请先创建或从电脑端导入" else "点击右下角“添加/新建”在 $workdir 下创建第一个代码文件",
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

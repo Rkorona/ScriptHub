@@ -184,7 +184,7 @@ fun MainScreen() {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "本面板采用公共存储（/sdcard/QLPanel）作为脚本工作区，proot 执行引擎将通过绑定挂载访问这些文件。",
+                    "本面板采用公共存储作为脚本工作区，proot 执行引擎将通过绑定挂载访问这些文件。可在「配置中心 → 工作目录」中自定义路径。",
                     fontSize  = 13.sp,
                     color     = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center

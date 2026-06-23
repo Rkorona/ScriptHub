@@ -18,11 +18,11 @@ class ScriptViewModel(application: Application) : AndroidViewModel(application) 
     private val db = AppDatabase.getDatabase(application)
     private val dao = db.scriptDao()
 
-    // 💡 1. 极其优雅的单轨只读观察流，由 Room 框架原生驱动实时更新，绝不发生冲突
     val scriptsList: StateFlow<List<ScriptEntity>> = dao.getAll()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
+        FileHelper.init(application)
         syncFilesWithDatabase()
     }
 
