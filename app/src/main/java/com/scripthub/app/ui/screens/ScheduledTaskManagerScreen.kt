@@ -9,24 +9,20 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -177,10 +173,7 @@ fun ScheduledTaskManagerScreen(
     val dbScripts by db.scriptDao().getAll().collectAsStateWithLifecycle(initialValue = emptyList())
     val availableScriptNames = remember(dbScripts) { dbScripts.map { it.name } }
 
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedFilter by remember { mutableStateOf("全部") }
     var onlyFailed by remember { mutableStateOf(false) }
-    val filters = listOf("全部", "Python", "Shell", "Node.js")
 
     // 调度引擎选择（从 SharedPreferences 读取，可热切换）
     var selectedSchedulerType by remember { mutableStateOf(SchedulerPreference.getType(context)) }
@@ -216,42 +209,6 @@ fun ScheduledTaskManagerScreen(
                 .fillMaxSize()
                 .padding(top = contentPadding.calculateTopPadding() + 8.dp, bottom = innerPadding.calculateBottomPadding())
         ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("搜索定时调度任务...", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Close, contentDescription = "清除搜索", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(28.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                    unfocusedBorderColor = Color.Transparent
-                )
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                filters.forEach { filter ->
-                    val isSelected = filter == selectedFilter
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { selectedFilter = filter },
-                        label = { Text(filter, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                        shape = RoundedCornerShape(50)
-                    )
-                }
-            }
-
             // 调度引擎选择卡片
             SchedulerSelectorCard(
                 currentType = selectedSchedulerType,
@@ -269,10 +226,7 @@ fun ScheduledTaskManagerScreen(
             }
 
             val filteredTasks = tasksList.filter { task ->
-                val matchesSearch = task.name.contains(searchQuery, ignoreCase = true) || task.targetScript.contains(searchQuery, ignoreCase = true)
-                val matchesType = selectedFilter == "全部" || task.scriptType.label == selectedFilter
-                val matchesFailure = !onlyFailed || !task.isSuccess
-                matchesSearch && matchesType && matchesFailure
+                !onlyFailed || !task.isSuccess
             }
 
             // 完美的空状态展示
