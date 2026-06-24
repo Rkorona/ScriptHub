@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Terminal
@@ -28,6 +29,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.scripthub.app.data.AppDatabase
 import com.scripthub.app.data.RunLogEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.scripthub.app.ui.theme.TerminalError
 import com.scripthub.app.ui.theme.TerminalSuccess
 import com.scripthub.app.ui.theme.TerminalWarn
@@ -40,6 +43,7 @@ import java.util.Locale
 @Composable
 fun GlobalLogBottomSheet(onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val db = remember { AppDatabase.getDatabase(context) }
@@ -47,6 +51,7 @@ fun GlobalLogBottomSheet(onDismiss: () -> Unit) {
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
     var selectedLog by remember { mutableStateOf<RunLogEntity?>(null) }
+    var pendingClearAll by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -101,13 +106,31 @@ fun GlobalLogBottomSheet(onDismiss: () -> Unit) {
                         )
                     }
                 }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "关闭",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp)
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (logs.isNotEmpty()) {
+                        IconButton(
+                            onClick  = { pendingClearAll = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "清空全部日志",
+                                tint     = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "关闭",
+                            tint     = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -164,6 +187,28 @@ fun GlobalLogBottomSheet(onDismiss: () -> Unit) {
         GlobalLogDetailBottomSheet(
             log = log,
             onDismiss = { selectedLog = null }
+        )
+    }
+
+    // 清空确认弹窗
+    if (pendingClearAll) {
+        AlertDialog(
+            onDismissRequest = { pendingClearAll = false },
+            shape = RoundedCornerShape(24.dp),
+            icon  = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("清空全部执行日志？") },
+            text  = { Text("所有脚本的历史执行记录将被永久删除，无法恢复。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch(Dispatchers.IO) { db.runLogDao().deleteAll() }
+                    pendingClearAll = false
+                }) {
+                    Text("清空", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingClearAll = false }) { Text("取消") }
+            }
         )
     }
 }

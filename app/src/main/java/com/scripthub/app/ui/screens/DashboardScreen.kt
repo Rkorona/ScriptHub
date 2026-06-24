@@ -71,6 +71,8 @@ fun DashboardScreen(
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
 
+    var bannerDismissed by remember(state.failedCount) { mutableStateOf(false) }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -93,10 +95,14 @@ fun DashboardScreen(
             }
         }
 
-        if (state.failedCount > 0) {
+        if (state.failedCount > 0 && !bannerDismissed) {
             item(key = "failures") {
                 AnimatedSection(visible, 130) {
-                    FailureBanner(state.failedCount, onFailuresClick)
+                    FailureBanner(
+                        count   = state.failedCount,
+                        onClick = { bannerDismissed = true; onFailuresClick() },
+                        onDismiss = { bannerDismissed = true }
+                    )
                 }
             }
         }
@@ -366,28 +372,40 @@ private fun StatusCard(state: DashboardUiState, modifier: Modifier = Modifier, o
 // =====================================================================================
 
 @Composable
-private fun FailureBanner(count: Int, onClick: () -> Unit) {
+private fun FailureBanner(count: Int, onClick: () -> Unit, onDismiss: () -> Unit) {
+    val c = MaterialTheme.colorScheme
     Card(
         modifier = Modifier.fillMaxWidth().expressiveClickable(onClick),
         colors   = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-            contentColor   = MaterialTheme.colorScheme.onErrorContainer
+            containerColor = c.errorContainer,
+            contentColor   = c.onErrorContainer
         ),
         shape = RoundedCornerShape(20.dp)
     ) {
         Row(
-            modifier          = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
+            modifier          = Modifier.fillMaxWidth().padding(start = 18.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.Default.Warning, null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
             Text(
                 "$count 个脚本执行失败，点击查看详情",
-                style    = MaterialTheme.typography.bodyMedium,
+                style      = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
+                modifier   = Modifier.weight(1f)
             )
-            Icon(Icons.Default.ChevronRight, null)
+            Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(18.dp))
+            IconButton(
+                onClick  = onDismiss,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "关闭提示",
+                    modifier = Modifier.size(16.dp),
+                    tint     = c.onErrorContainer.copy(alpha = 0.6f)
+                )
+            }
         }
     }
 }

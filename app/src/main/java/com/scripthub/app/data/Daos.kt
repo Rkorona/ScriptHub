@@ -72,6 +72,9 @@ interface RunLogDao {
     @Query("DELETE FROM run_logs WHERE scriptName = :scriptName")
     suspend fun deleteForScript(scriptName: String)
 
+    @Query("DELETE FROM run_logs")
+    suspend fun deleteAll()
+
     @Query("SELECT COUNT(*) FROM run_logs WHERE startTime >= :startOfDayMs")
     fun countTodayFlow(startOfDayMs: Long): Flow<Int>
 
