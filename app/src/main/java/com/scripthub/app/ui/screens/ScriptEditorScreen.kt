@@ -509,25 +509,7 @@ fun ScriptEditorScreen(
 
                     HorizontalDivider(color = colors.outlineVariant)
 
-                    // ── 第一行：常用符号 ──────────────────────────────
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
-                        modifier              = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        listOf("(", ")", "/", "=", ",", ";", "\"", "'").forEach { sym ->
-                            CodeKey(sym) {
-                                controllerRef.value?.typeText(sym)
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = colors.outlineVariant)
-
-                    // ── 第二行：光标导航 + 括号符号 ──────────────────
+                    // ── 单行：光标 + 全部符号 ─────────────────────────
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment     = Alignment.CenterVertically,
@@ -541,7 +523,7 @@ fun ScriptEditorScreen(
                         CodeKey("↓", special = true) { controllerRef.value?.moveCursor("down")  }
                         CodeKey("→", special = true) { controllerRef.value?.moveCursor("right") }
 
-                        listOf("{", "}", "[", "]", "`", "<", ">", "-", "!").forEach { sym ->
+                        listOf("(", ")", "{", "}", "[", "]", "/", "=", ",", ";", "\"", "'", "<", ">", "`", "-", "!").forEach { sym ->
                             CodeKey(sym) {
                                 controllerRef.value?.typeText(sym)
                             }
@@ -594,43 +576,28 @@ fun ScriptEditorScreen(
     }
 
     if (showFileBrowser) {
-        if (activeIsFolder) {
-            // 工程项目：浏览项目内部文件并切换编辑
-            FolderFileBrowserSheet(
-                folderName          = activeFileName,
-                entryPoint          = activeEntry,
-                onDismiss           = { showFileBrowser = false },
-                onSelectFile        = { relPath ->
-                    activeEntry = relPath
-                    showFileBrowser = false
-                },
-                onEntryPointChanged = { newEntry -> activeEntry = newEntry }
-            )
-        } else {
-            // 单文件模式：浏览工作目录，可切换到任意文件
-            FolderFileBrowserSheet(
-                folderName          = "",
-                entryPoint          = activeFileName,
-                onDismiss           = { showFileBrowser = false },
-                onSelectFile        = { relPath ->
-                    // relPath 是相对于工作目录的路径
-                    // 判断是否为直属文件（无子目录层级）
-                    if (!relPath.contains("/")) {
-                        activeFileName = relPath
-                        activeIsFolder = false
-                        activeEntry    = relPath
-                    } else {
-                        // 带路径的文件：可能属于某个工程项目
-                        val projectFolder = relPath.substringBefore("/")
-                        val fileInProject = relPath.substringAfter("/")
-                        activeFileName = projectFolder
-                        activeIsFolder = true
-                        activeEntry    = fileInProject
-                    }
-                    showFileBrowser = false
-                },
-                onEntryPointChanged = {}
-            )
-        }
+        // 始终打开工作目录根级浏览器，无论当前编辑的是单文件还是工程项目
+        FolderFileBrowserSheet(
+            folderName          = "",
+            entryPoint          = if (activeIsFolder) "" else activeFileName,
+            onDismiss           = { showFileBrowser = false },
+            onSelectFile        = { relPath ->
+                if (!relPath.contains("/")) {
+                    // 工作目录根级单文件
+                    activeFileName = relPath
+                    activeIsFolder = false
+                    activeEntry    = relPath
+                } else {
+                    // 工程项目内的文件：projectFolder/fileInProject
+                    val projectFolder = relPath.substringBefore("/")
+                    val fileInProject = relPath.substringAfter("/")
+                    activeFileName = projectFolder
+                    activeIsFolder = true
+                    activeEntry    = fileInProject
+                }
+                showFileBrowser = false
+            },
+            onEntryPointChanged = {}
+        )
     }
 }

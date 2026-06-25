@@ -310,12 +310,24 @@ function setTheme(theme) {
     (theme === 'scripthub-light' || theme === 'vs') ? '#FAFAFA' : '#0D0D0D';
 }
 
-/** 在光标处插入文字（代码键盘调用）*/
+/** 在光标处插入文字（代码键盘调用，使用 executeEdits 避免焦点丢失问题）*/
 function typeText(base64) {
   try {
     var text = decodeURIComponent(escape(atob(base64)));
-    window.editor.trigger('keyboard', 'type', { text: text });
-  } catch (e) {}
+    var selection = window.editor.getSelection();
+    window.editor.executeEdits('codekey', [{
+      range: selection,
+      text: text,
+      forceMoveMarkers: true
+    }]);
+    // 将光标移到插入内容之后
+    var model = window.editor.getModel();
+    var newOffset = model.getOffsetAt(selection.getStartPosition()) + text.length;
+    var newPos = model.getPositionAt(newOffset);
+    window.editor.setPosition(newPos);
+  } catch (e) {
+    console.error('typeText error', e);
+  }
 }
 
 /** 撤销 */
