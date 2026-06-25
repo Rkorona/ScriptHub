@@ -179,13 +179,26 @@ fun FolderFileBrowserSheet(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(folderName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = c.onSurface)
                     Text(
-                        text       = "入口: $currentEntry",
-                        style      = MaterialTheme.typography.labelSmall,
-                        color      = c.primary.copy(alpha = 0.8f),
-                        fontFamily = FontFamily.Monospace
+                        text       = if (folderName.isEmpty()) "工作目录" else folderName,
+                        style      = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color      = c.onSurface
                     )
+                    if (folderName.isNotEmpty()) {
+                        Text(
+                            text       = "入口: $currentEntry",
+                            style      = MaterialTheme.typography.labelSmall,
+                            color      = c.primary.copy(alpha = 0.8f),
+                            fontFamily = FontFamily.Monospace
+                        )
+                    } else {
+                        Text(
+                            text       = "点击文件可切换编辑",
+                            style      = MaterialTheme.typography.labelSmall,
+                            color      = c.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
 

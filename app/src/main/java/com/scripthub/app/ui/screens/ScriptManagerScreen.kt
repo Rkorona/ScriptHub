@@ -319,19 +319,20 @@ fun ScriptManagerScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val fileExt    = singleFileName.substringAfterLast(".", "")
-                        val isSupported = fileExt == "py" || fileExt == "js" || fileExt == "sh"
-                        if (singleFileName.isNotBlank() && isSupported) {
-                            val scriptType = when (fileExt) {
-                                "py" -> "Python"
-                                "js" -> "Node.js"
-                                else -> "Shell"
+                        val fileExt = singleFileName.substringAfterLast(".", "")
+                        if (singleFileName.isNotBlank() && fileExt.isNotBlank()) {
+                            val scriptType = when (fileExt.lowercase()) {
+                                "py", "pyw", "pyi"           -> "Python"
+                                "js", "mjs", "cjs"           -> "Node.js"
+                                "ts", "mts", "cts"           -> "Node.js"
+                                "sh", "bash", "zsh"          -> "Shell"
+                                else                         -> "Shell"
                             }
                             viewModel.createSingleFile(singleFileName, scriptType)
                             showSingleFileDialog = false
                         }
                     },
-                    enabled = singleFileName.contains(".") && singleFileName.length > 3
+                    enabled = singleFileName.contains(".") && singleFileName.substringAfterLast(".", "").isNotBlank()
                 ) { Text("创建") }
             },
             dismissButton = {

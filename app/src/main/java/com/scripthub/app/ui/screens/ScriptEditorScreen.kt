@@ -30,6 +30,7 @@ import com.scripthub.app.utils.FileHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.layout.imePadding
 
 // ──────────────────────────────────────────────────────────────────
 // 语言枚举 & 检测（Monaco language ID）
@@ -245,8 +246,15 @@ fun ScriptEditorScreen(
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
 
-    val lang        = remember(fileName, entryPoint) { detectLang(if (isFolder) entryPoint else fileName) }
-    val displayName = if (isFolder) entryPoint else fileName
+    // ── 当前活动文件状态（可通过文件浏览器切换）────────────────────────
+    var activeFileName  by remember { mutableStateOf(fileName) }
+    var activeIsFolder  by remember { mutableStateOf(isFolder) }
+    var activeEntry     by remember { mutableStateOf(entryPoint) }
+
+    val lang        = remember(activeFileName, activeEntry, activeIsFolder) {
+        detectLang(if (activeIsFolder) activeEntry else activeFileName)
+    }
+    val displayName = if (activeIsFolder) activeEntry else activeFileName
 
     var initialContent  by remember { mutableStateOf("") }
     var isFileLoaded    by remember { mutableStateOf(false) }
@@ -262,10 +270,12 @@ fun ScriptEditorScreen(
     var cursorLine by remember { mutableIntStateOf(1) }
     var cursorCol  by remember { mutableIntStateOf(1) }
 
-    // ── 文件加载 ────────────────────────────────────────────────────
-    LaunchedEffect(fileName, entryPoint) {
+    // ── 文件加载（activeFileName/activeEntry 变化时自动重载）───────────
+    LaunchedEffect(activeFileName, activeEntry, activeIsFolder) {
+        isFileLoaded = false
+        controllerRef.value = null
         val text = withContext(Dispatchers.IO) {
-            FileHelper.readScriptContent(fileName, isFolder, entryPoint)
+            FileHelper.readScriptContent(activeFileName, activeIsFolder, activeEntry)
         }
         initialContent = text
         lineCount      = text.count { it == '\n' } + 1
@@ -282,7 +292,7 @@ fun ScriptEditorScreen(
         controller.getContent { content ->
             scope.launch {
                 val ok = withContext(Dispatchers.IO) {
-                    FileHelper.writeScriptContent(fileName, isFolder, entryPoint, content)
+                    FileHelper.writeScriptContent(activeFileName, activeIsFolder, activeEntry, content)
                 }
                 isSaving = false
                 if (!silent) {
@@ -301,7 +311,7 @@ fun ScriptEditorScreen(
         controller.getContent { content ->
             scope.launch {
                 withContext(Dispatchers.IO) {
-                    FileHelper.writeScriptContent(fileName, isFolder, entryPoint, content)
+                    FileHelper.writeScriptContent(activeFileName, activeIsFolder, activeEntry, content)
                 }
                 isSaving = false
                 showTerminal = true
@@ -312,6 +322,7 @@ fun ScriptEditorScreen(
     val colors = MaterialTheme.colorScheme
 
     Scaffold(
+        modifier = Modifier.imePadding(),
 
         // ── TopBar：工具栏 + 文件标签 ─────────────────────────────────
         topBar = {
@@ -333,11 +344,7 @@ fun ScriptEditorScreen(
                                 .horizontalScroll(rememberScrollState())
                         ) {
                             ToolbarAction(Icons.Default.FolderOpen, "文件") {
-                                if (isFolder) {
-                                    showFileBrowser = true
-                                } else {
-                                    Toast.makeText(context, "单文件模式，无工作区", Toast.LENGTH_SHORT).show()
-                                }
+                                showFileBrowser = true
                             }
                             ToolbarAction(Icons.Default.Edit, "编辑") {
                                 Toast.makeText(context, "即将推出", Toast.LENGTH_SHORT).show()
@@ -580,19 +587,50 @@ fun ScriptEditorScreen(
 
     if (showTerminal) {
         TerminalConsoleBottomSheet(
-            taskName   = fileName,
-            scriptName = if (isFolder) entryPoint else fileName,
+            taskName   = activeFileName,
+            scriptName = if (activeIsFolder) activeEntry else activeFileName,
             onDismiss  = { showTerminal = false }
         )
     }
 
-    if (showFileBrowser && isFolder) {
-        FolderFileBrowserSheet(
-            folderName          = fileName,
-            entryPoint          = entryPoint,
-            onDismiss           = { showFileBrowser = false },
-            onSelectFile        = { showFileBrowser = false },
-            onEntryPointChanged = {}
-        )
+    if (showFileBrowser) {
+        if (activeIsFolder) {
+            // 工程项目：浏览项目内部文件并切换编辑
+            FolderFileBrowserSheet(
+                folderName          = activeFileName,
+                entryPoint          = activeEntry,
+                onDismiss           = { showFileBrowser = false },
+                onSelectFile        = { relPath ->
+                    activeEntry = relPath
+                    showFileBrowser = false
+                },
+                onEntryPointChanged = { newEntry -> activeEntry = newEntry }
+            )
+        } else {
+            // 单文件模式：浏览工作目录，可切换到任意文件
+            FolderFileBrowserSheet(
+                folderName          = "",
+                entryPoint          = activeFileName,
+                onDismiss           = { showFileBrowser = false },
+                onSelectFile        = { relPath ->
+                    // relPath 是相对于工作目录的路径
+                    // 判断是否为直属文件（无子目录层级）
+                    if (!relPath.contains("/")) {
+                        activeFileName = relPath
+                        activeIsFolder = false
+                        activeEntry    = relPath
+                    } else {
+                        // 带路径的文件：可能属于某个工程项目
+                        val projectFolder = relPath.substringBefore("/")
+                        val fileInProject = relPath.substringAfter("/")
+                        activeFileName = projectFolder
+                        activeIsFolder = true
+                        activeEntry    = fileInProject
+                    }
+                    showFileBrowser = false
+                },
+                onEntryPointChanged = {}
+            )
+        }
     }
 }
