@@ -50,6 +50,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -108,8 +109,9 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
 
-    val soraVersion = "0.24.6"
-    implementation("io.github.rosemoe:editor-bom:$soraVersion")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
+    implementation(platform("io.github.rosemoe:editor-bom:0.24.6"))
     implementation("io.github.rosemoe:editor")
     implementation("io.github.rosemoe:language-textmate")
 }
