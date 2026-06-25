@@ -230,6 +230,9 @@ function initEditor() {
     }
   });
 
+  // ── 自定义语言补全提供器（Python / Shell 等无内置 Worker 的语言）───
+  registerLanguageCompletions();
+
   // ── 内容变化 → 只回传统计数据（不回传全文，性能友好）─────────────
   window.editor.onDidChangeModelContent(function () {
     var model = window.editor.getModel();
@@ -336,6 +339,313 @@ function moveCursor(direction) {
   if (map[direction]) {
     window.editor.trigger('keyboard', map[direction], null);
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// 自定义补全提供器（为没有内置 Worker 的语言提供关键字/内置函数提示）
+// ════════════════════════════════════════════════════════════════
+
+function registerLanguageCompletions() {
+
+  // ── 工具：把字符串列表转成 CompletionItem 数组 ──────────────────
+  function makeItems(words, kind, detail, range) {
+    return words.map(function (w) {
+      return {
+        label: w,
+        kind: kind,
+        detail: detail,
+        insertText: w,
+        range: range
+      };
+    });
+  }
+
+  // ── 工具：把代码片段列表转成 CompletionItem 数组 ─────────────────
+  function makeSnippets(snippets, range) {
+    return snippets.map(function (s) {
+      return {
+        label: s.label,
+        kind: monaco.languages.CompletionItemKind.Snippet,
+        detail: s.detail || 'snippet',
+        insertText: s.insert,
+        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+        documentation: s.doc || '',
+        range: range
+      };
+    });
+  }
+
+  // ── 通用：从文档中提取已有单词作为补全候选 ──────────────────────
+  function getDocumentWords(model, currentWord) {
+    var text = model.getValue();
+    var wordRe = /[a-zA-Z_]\w*/g;
+    var seen = {};
+    var result = [];
+    var m;
+    while ((m = wordRe.exec(text)) !== null) {
+      var w = m[0];
+      if (w !== currentWord && !seen[w]) {
+        seen[w] = true;
+        result.push(w);
+      }
+    }
+    return result;
+  }
+
+  // ════ Python ════════════════════════════════════════════════════
+  var PY_KEYWORDS = [
+    'False','None','True','and','as','assert','async','await',
+    'break','class','continue','def','del','elif','else','except',
+    'finally','for','from','global','if','import','in','is',
+    'lambda','nonlocal','not','or','pass','raise','return',
+    'try','while','with','yield'
+  ];
+
+  var PY_BUILTINS = [
+    'abs','all','any','ascii','bin','bool','breakpoint','bytearray',
+    'bytes','callable','chr','classmethod','compile','complex',
+    'copyright','credits','delattr','dict','dir','divmod','enumerate',
+    'eval','exec','exit','filter','float','format','frozenset',
+    'getattr','globals','hasattr','hash','help','hex','id','input',
+    'int','isinstance','issubclass','iter','len','license','list',
+    'locals','map','max','memoryview','min','next','object','oct',
+    'open','ord','pow','print','property','quit','range','repr',
+    'reversed','round','set','setattr','slice','sorted','staticmethod',
+    'str','sum','super','tuple','type','vars','zip',
+    '__import__','__name__','__file__','__doc__','__package__'
+  ];
+
+  var PY_COMMON_MODULES = [
+    'os','sys','re','math','json','time','datetime','collections',
+    'itertools','functools','pathlib','subprocess','threading',
+    'multiprocessing','socket','http','urllib','requests','logging',
+    'unittest','typing','dataclasses','abc','io','copy','random',
+    'hashlib','base64','struct','pickle','csv','sqlite3','argparse',
+    'shutil','glob','fnmatch','tempfile','traceback','inspect',
+    'contextlib','enum','queue','signal','platform','gc','weakref'
+  ];
+
+  var PY_SNIPPETS = [
+    { label: 'def',    detail: 'function definition',
+      insert: 'def ${1:function_name}(${2:args}):\n    ${3:pass}',
+      doc: 'Define a function' },
+    { label: 'class',  detail: 'class definition',
+      insert: 'class ${1:ClassName}(${2:object}):\n    def __init__(self${3:}):\n        ${4:pass}',
+      doc: 'Define a class' },
+    { label: 'if',     detail: 'if statement',
+      insert: 'if ${1:condition}:\n    ${2:pass}' },
+    { label: 'ifelse', detail: 'if-else statement',
+      insert: 'if ${1:condition}:\n    ${2:pass}\nelse:\n    ${3:pass}' },
+    { label: 'for',    detail: 'for loop',
+      insert: 'for ${1:item} in ${2:iterable}:\n    ${3:pass}' },
+    { label: 'while',  detail: 'while loop',
+      insert: 'while ${1:condition}:\n    ${2:pass}' },
+    { label: 'try',    detail: 'try-except block',
+      insert: 'try:\n    ${1:pass}\nexcept ${2:Exception} as ${3:e}:\n    ${4:pass}' },
+    { label: 'with',   detail: 'with statement',
+      insert: 'with ${1:expression} as ${2:var}:\n    ${3:pass}' },
+    { label: 'import', detail: 'import module',
+      insert: 'import ${1:module}' },
+    { label: 'from',   detail: 'from import',
+      insert: 'from ${1:module} import ${2:name}' },
+    { label: 'lambda', detail: 'lambda function',
+      insert: 'lambda ${1:args}: ${2:expression}' },
+    { label: 'print',  detail: 'print()',
+      insert: 'print(${1:value})' },
+    { label: 'list',   detail: 'list comprehension',
+      insert: '[${1:expr} for ${2:item} in ${3:iterable}]' },
+    { label: 'dict',   detail: 'dict comprehension',
+      insert: '{${1:k}: ${2:v} for ${3:k}, ${4:v} in ${5:iterable}.items()}' },
+    { label: 'open',   detail: 'open file',
+      insert: 'with open(${1:"file.txt"}, ${2:"r"}) as ${3:f}:\n    ${4:content} = ${3:f}.read()' },
+    { label: 'main',   detail: '__main__ guard',
+      insert: 'if __name__ == "__main__":\n    ${1:main()}' },
+    { label: 'argparse', detail: 'argparse boilerplate',
+      insert: 'import argparse\nparser = argparse.ArgumentParser(description="${1:}")\nparser.add_argument("${2:arg}")\nargs = parser.parse_args()' },
+    { label: 'dataclass', detail: 'dataclass definition',
+      insert: 'from dataclasses import dataclass\n\n@dataclass\nclass ${1:MyClass}:\n    ${2:field}: ${3:str}' },
+  ];
+
+  monaco.languages.registerCompletionItemProvider('python', {
+    triggerCharacters: ['.', '(', ' ', '\t'],
+    provideCompletionItems: function (model, position) {
+      var word = model.getWordUntilPosition(position);
+      var range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber:   position.lineNumber,
+        startColumn:     word.startColumn,
+        endColumn:       word.endColumn
+      };
+      var K = monaco.languages.CompletionItemKind;
+      var items = [].concat(
+        makeItems(PY_KEYWORDS,       K.Keyword,   'keyword',        range),
+        makeItems(PY_BUILTINS,       K.Function,  'built-in',       range),
+        makeItems(PY_COMMON_MODULES, K.Module,    'module',         range),
+        makeSnippets(PY_SNIPPETS, range)
+      );
+      var docWords = getDocumentWords(model, word.word);
+      docWords.forEach(function (w) {
+        items.push({ label: w, kind: K.Text, detail: 'word', insertText: w, range: range });
+      });
+      return { suggestions: items };
+    }
+  });
+
+  // ════ Shell / Bash ══════════════════════════════════════════════
+  var SH_KEYWORDS = [
+    'if','then','else','elif','fi','for','in','do','done',
+    'while','until','case','esac','function','return','exit',
+    'break','continue','local','declare','readonly','export',
+    'unset','shift','source','trap','wait','jobs','bg','fg',
+    'select','time','coproc'
+  ];
+
+  var SH_BUILTINS = [
+    'echo','printf','read','test','[','[[','cd','pwd','ls','cp',
+    'mv','rm','mkdir','rmdir','touch','cat','head','tail','grep',
+    'sed','awk','cut','sort','uniq','wc','tr','find','xargs',
+    'chmod','chown','chgrp','ln','diff','patch','tar','gzip',
+    'gunzip','zip','unzip','curl','wget','ssh','scp','rsync',
+    'ps','top','kill','pkill','pgrep','nohup','sleep','date',
+    'basename','dirname','realpath','which','type','hash',
+    'env','set','export','eval','exec','true','false','alias',
+    'history','pushd','popd','dirs','let','expr','bc','tee',
+    'xdg-open','open','clear','reset','stty'
+  ];
+
+  var SH_VARS = [
+    '$0','$1','$2','$3','$@','$*','$#','$?','$$','$!','$-',
+    '$HOME','$PATH','$USER','$SHELL','$PWD','$OLDPWD','$IFS',
+    '$RANDOM','$LINENO','$BASH_VERSION','$OSTYPE','$HOSTNAME',
+    '$TERM','$EDITOR','$LANG','$TZ'
+  ];
+
+  var SH_SNIPPETS = [
+    { label: 'shebang', detail: 'bash shebang line',
+      insert: '#!/usr/bin/env bash\nset -euo pipefail\n${1:}' },
+    { label: 'if',   detail: 'if statement',
+      insert: 'if ${1:[ condition ]}; then\n    ${2:}\nfi' },
+    { label: 'ifel', detail: 'if-else statement',
+      insert: 'if ${1:[ condition ]}; then\n    ${2:}\nelse\n    ${3:}\nfi' },
+    { label: 'for',  detail: 'for loop',
+      insert: 'for ${1:item} in ${2:list}; do\n    ${3:}\ndone' },
+    { label: 'while',detail: 'while loop',
+      insert: 'while ${1:[ condition ]}; do\n    ${2:}\ndone' },
+    { label: 'case', detail: 'case statement',
+      insert: 'case ${1:var} in\n    ${2:pattern})\n        ${3:};;\n    *)\n        ${4:};;\nesac' },
+    { label: 'func', detail: 'function definition',
+      insert: '${1:function_name}() {\n    ${2:}\n}' },
+    { label: 'read', detail: 'read user input',
+      insert: 'read -r -p "${1:Prompt: }" ${2:var}' },
+    { label: 'trap', detail: 'trap signal',
+      insert: 'trap \'${1:cleanup}\' ${2:EXIT INT TERM}' },
+    { label: 'arr',  detail: 'array declaration',
+      insert: '${1:arr}=(${2:"a" "b" "c"})' },
+    { label: 'log',  detail: 'log to stderr',
+      insert: 'echo "[$(date +%T)] ${1:message}" >&2' },
+    { label: 'die',  detail: 'print error and exit',
+      insert: 'die() { echo "ERROR: $*" >&2; exit 1; }\n' },
+    { label: 'check_cmd', detail: 'check command exists',
+      insert: 'command -v ${1:cmd} &>/dev/null || { echo "${1:cmd} not found"; exit 1; }' },
+    { label: 'getopts', detail: 'getopts option parsing',
+      insert: 'while getopts ":${1:h}:" opt; do\n  case $opt in\n    h) ${2:usage}; exit 0;;\n    \\?) echo "Unknown option: -$OPTARG"; exit 1;;\n  esac\ndone' },
+  ];
+
+  monaco.languages.registerCompletionItemProvider('shell', {
+    triggerCharacters: ['$', ' ', '\t', '-', '/'],
+    provideCompletionItems: function (model, position) {
+      var word = model.getWordUntilPosition(position);
+      var range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber:   position.lineNumber,
+        startColumn:     word.startColumn,
+        endColumn:       word.endColumn
+      };
+      var K = monaco.languages.CompletionItemKind;
+      var items = [].concat(
+        makeItems(SH_KEYWORDS, K.Keyword,  'keyword',  range),
+        makeItems(SH_BUILTINS, K.Function, 'command',  range),
+        makeItems(SH_VARS,     K.Variable, 'variable', range),
+        makeSnippets(SH_SNIPPETS, range)
+      );
+      var docWords = getDocumentWords(model, word.word);
+      docWords.forEach(function (w) {
+        items.push({ label: w, kind: K.Text, detail: 'word', insertText: w, range: range });
+      });
+      return { suggestions: items };
+    }
+  });
+
+  // ════ 其余语言：通用"文档内词汇 + 关键字"兜底补全 ════════════════
+  var LANG_KEYWORDS = {
+    kotlin: ['fun','val','var','class','object','interface','if','else','when',
+             'for','while','do','return','break','continue','throw','try','catch',
+             'finally','import','package','is','as','in','out','by','companion',
+             'override','open','abstract','sealed','data','enum','typealias',
+             'suspend','coroutineScope','launch','async','await','let','run',
+             'also','apply','with','it','this','super','null','true','false'],
+    java:   ['abstract','assert','boolean','break','byte','case','catch','char',
+             'class','const','continue','default','do','double','else','enum',
+             'extends','final','finally','float','for','goto','if','implements',
+             'import','instanceof','int','interface','long','native','new',
+             'package','private','protected','public','return','short','static',
+             'strictfp','super','switch','synchronized','this','throw','throws',
+             'transient','try','void','volatile','while','true','false','null'],
+    cpp:    ['auto','break','case','char','class','const','continue','default',
+             'delete','do','double','else','enum','extern','false','float','for',
+             'friend','goto','if','inline','int','long','namespace','new',
+             'nullptr','operator','private','protected','public','return','short',
+             'signed','sizeof','static','struct','switch','template','this',
+             'throw','true','try','typedef','typeid','typename','union',
+             'unsigned','using','virtual','void','volatile','while','include',
+             'define','ifdef','ifndef','endif','pragma'],
+    rust:   ['as','async','await','break','const','continue','crate','dyn','else',
+             'enum','extern','false','fn','for','if','impl','in','let','loop',
+             'match','mod','move','mut','pub','ref','return','self','Self',
+             'static','struct','super','trait','true','type','union','unsafe',
+             'use','where','while'],
+    go:     ['break','case','chan','const','continue','default','defer','else',
+             'fallthrough','for','func','go','goto','if','import','interface',
+             'map','package','range','return','select','struct','switch','type',
+             'var','true','false','nil','append','cap','close','complex','copy',
+             'delete','imag','len','make','new','panic','print','println',
+             'real','recover'],
+    sql:    ['SELECT','FROM','WHERE','AND','OR','NOT','INSERT','INTO','VALUES',
+             'UPDATE','SET','DELETE','CREATE','TABLE','INDEX','VIEW','DROP',
+             'ALTER','ADD','COLUMN','PRIMARY','KEY','FOREIGN','REFERENCES',
+             'JOIN','LEFT','RIGHT','INNER','OUTER','FULL','ON','GROUP','BY',
+             'ORDER','HAVING','LIMIT','OFFSET','DISTINCT','AS','IN','EXISTS',
+             'LIKE','BETWEEN','IS','NULL','CASE','WHEN','THEN','ELSE','END',
+             'COUNT','SUM','AVG','MAX','MIN','COALESCE','IFNULL','CAST',
+             'UNION','ALL','WITH','RECURSIVE'],
+    lua:    ['and','break','do','else','elseif','end','false','for','function',
+             'goto','if','in','local','nil','not','or','repeat','return','then',
+             'true','until','while','print','tostring','tonumber','type',
+             'pairs','ipairs','next','select','unpack','table','string','math',
+             'io','os','coroutine','require','pcall','xpcall','error','assert'],
+  };
+
+  Object.keys(LANG_KEYWORDS).forEach(function (lang) {
+    var kws = LANG_KEYWORDS[lang];
+    monaco.languages.registerCompletionItemProvider(lang, {
+      provideCompletionItems: function (model, position) {
+        var word = model.getWordUntilPosition(position);
+        var range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber:   position.lineNumber,
+          startColumn:     word.startColumn,
+          endColumn:       word.endColumn
+        };
+        var K = monaco.languages.CompletionItemKind;
+        var items = makeItems(kws, K.Keyword, 'keyword', range);
+        var docWords = getDocumentWords(model, word.word);
+        docWords.forEach(function (w) {
+          items.push({ label: w, kind: K.Text, detail: 'word', insertText: w, range: range });
+        });
+        return { suggestions: items };
+      }
+    });
+  });
 }
 
 /** 聚焦编辑器（代码键盘按键后重新聚焦）*/
