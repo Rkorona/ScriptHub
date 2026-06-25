@@ -14,6 +14,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -213,8 +214,7 @@ fun ScriptManagerScreen(
                 } else {
                     LazyColumn(
                         modifier       = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp)
                     ) {
                         // ── 单文件脚本分区 ──
                         item(key = "header_single") {
@@ -492,28 +492,22 @@ private fun SectionHeader(
     Row(
         modifier          = Modifier
             .fillMaxWidth()
-            .padding(top = topPad, bottom = 6.dp, start = 2.dp),
+            .padding(top = topPad, bottom = 8.dp, start = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             text       = title,
             style      = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Black,
-            color      = MaterialTheme.colorScheme.primary
+            fontWeight = FontWeight.Bold,
+            color      = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shape = RoundedCornerShape(6.dp)
-        ) {
-            Text(
-                text     = "$count",
-                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-                style    = MaterialTheme.typography.labelSmall,
-                color    = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        Text(
+            text       = "$count",
+            style      = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Normal,
+            color      = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+        )
     }
 }
 
@@ -616,15 +610,25 @@ fun ScriptCard(
     onEditRequest: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // 运行中状态：环形脉冲呼吸效果，替代原来的方圆角底色块
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.05f,
-        targetValue  = 0.25f,
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue  = 1.18f,
         animationSpec = infiniteRepeatable(
-            animation  = tween(1200, easing = FastOutSlowInEasing),
+            animation  = tween(1100, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "pulseAlpha"
+        label = "pulseScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue  = 0f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(1100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlphaRing"
     )
 
     var showMoreMenu by remember { mutableStateOf(false) }
@@ -642,184 +646,164 @@ fun ScriptCard(
     val lastRunColor = if (script.lastRun.contains("失败") || script.lastRun.contains("错误")) {
         MaterialTheme.colorScheme.error
     } else {
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
     }
 
-    Card(
-        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape    = RoundedCornerShape(20.dp),
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .expressiveClickable(onOpenDetail)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier          = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier          = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // ── 实心圆形图标，呼应文件管理器的"头像式"图标风格 ──
+            Box(
+                modifier         = Modifier.size(48.dp),
+                contentAlignment = Alignment.Center
             ) {
+                if (script.isRunning) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { scaleX = pulseScale; scaleY = pulseScale }
+                            .background(themeColor.copy(alpha = pulseAlpha), CircleShape)
+                    )
+                }
                 Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .background(
-                            color = if (script.isRunning) themeColor.copy(alpha = pulseAlpha) else Color.Transparent,
-                            shape = RoundedCornerShape(14.dp)
-                        )
-                        .padding(4.dp),
+                    modifier         = Modifier.size(44.dp).background(themeColor, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier         = Modifier.fillMaxSize().background(themeColor.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector        = scriptIcon(script),
-                            contentDescription = null,
-                            tint               = themeColor,
-                            modifier           = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        verticalAlignment      = Alignment.CenterVertically,
-                        horizontalArrangement  = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text       = script.name,
-                            style      = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color      = MaterialTheme.colorScheme.onSurface
-                        )
-                        Box(
-                            modifier = Modifier
-                                .background(themeColor.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                script.type,
-                                style      = MaterialTheme.typography.labelSmall,
-                                color      = themeColor,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        if (script.isRunning) {
-                            Box(modifier = Modifier.size(6.dp).background(StatusRunning, RoundedCornerShape(50)))
-                        }
-                    }
-
-                    if (script.isFolder) {
-                        Text(
-                            text       = "入口 ➔ ${script.entryPoint}",
-                            style      = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                            color      = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            modifier   = Modifier.padding(top = 2.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text       = script.trigger,
-                        fontFamily = FontFamily.Monospace,
-                        style      = MaterialTheme.typography.bodySmall,
-                        color      = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                    Icon(
+                        imageVector        = scriptIcon(script),
+                        contentDescription = null,
+                        tint               = Color.White,
+                        modifier           = Modifier.size(20.dp)
                     )
-                    Text(
-                        text  = script.lastRun,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = lastRunColor
-                    )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilledIconButton(
-                        onClick   = onExecuteNow,
-                        enabled   = !script.isRunning,
-                        colors    = IconButtonDefaults.filledIconButtonColors(
-                            containerColor          = themeColor.copy(alpha = 0.1f),
-                            contentColor            = themeColor,
-                            disabledContainerColor  = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
-                            disabledContentColor    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
-                        ),
-                        modifier  = Modifier.size(36.dp),
-                        shape     = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = "立即执行", modifier = Modifier.size(18.dp))
-                    }
-
-                    Box {
-                        IconButton(onClick = { showMoreMenu = true }) {
-                            Icon(
-                                Icons.Default.MoreVert,
-                                contentDescription = "更多操作",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        }
-                        DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
-                            DropdownMenuItem(
-                                text        = { Text("查看/编辑代码") },
-                                leadingIcon = { Icon(Icons.Default.Terminal, null) },
-                                onClick     = { showMoreMenu = false; onOpenDetail() }
-                            )
-                            DropdownMenuItem(
-                                text        = { Text("查看日志记录") },
-                                leadingIcon = { Icon(Icons.Default.History, null) },
-                                onClick     = { showMoreMenu = false; onViewLogs() }
-                            )
-                            if (script.isFolder) {
-                                DropdownMenuItem(
-                                    text        = { Text("编辑项目信息") },
-                                    leadingIcon = { Icon(Icons.Default.Edit, null) },
-                                    onClick     = { showMoreMenu = false; onEditRequest() }
-                                )
-                            }
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text        = { Text("删除脚本", color = MaterialTheme.colorScheme.error) },
-                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                                onClick     = { showMoreMenu = false; onDeleteRequest() }
-                            )
-                        }
-                    }
                 }
             }
 
-            AnimatedVisibility(visible = script.isFolder && dependencyStatusEnum != DependencyStatus.None) {
-                Column {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        color    = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment      = Alignment.CenterVertically,
+                    horizontalArrangement  = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text       = script.name,
+                        style      = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = MaterialTheme.colorScheme.onSurface
                     )
-                    Row(
-                        modifier              = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment    = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            val (statusText, statusColor) = when (dependencyStatusEnum) {
-                                DependencyStatus.Configured -> "检测到未安装依赖环境" to MaterialTheme.colorScheme.tertiary
-                                DependencyStatus.Installed  -> "依赖环境已完全就绪" to TerminalSuccess
-                                DependencyStatus.Error      -> "依赖配置失败，环境异常" to MaterialTheme.colorScheme.error
-                                else                        -> "" to Color.Unspecified
-                            }
-                            Box(modifier = Modifier.size(6.dp).background(statusColor, RoundedCornerShape(50)))
-                            Text(
-                                text       = statusText,
-                                style      = MaterialTheme.typography.labelSmall,
-                                color      = statusColor,
-                                fontWeight = FontWeight.SemiBold
+                    if (script.isRunning) {
+                        Box(modifier = Modifier.size(6.dp).background(StatusRunning, CircleShape))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                // 第二行：类型 · 入口（仅工程项目），克制的灰色元信息，对齐截图的"文件夹/0 B"风格
+                Text(
+                    text  = if (script.isFolder) "${script.type} · 入口 ${script.entryPoint}" else script.type,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                )
+
+                Spacer(modifier = Modifier.height(1.dp))
+
+                // 第三行：触发条件 + 上次运行，对齐截图的"修改于 ..."一行
+                Text(
+                    text       = "${script.trigger} · ${script.lastRun}",
+                    style      = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color      = lastRunColor,
+                    maxLines   = 1
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilledIconButton(
+                    onClick   = onExecuteNow,
+                    enabled   = !script.isRunning,
+                    colors    = IconButtonDefaults.filledIconButtonColors(
+                        containerColor          = themeColor,
+                        contentColor            = Color.White,
+                        disabledContainerColor  = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+                        disabledContentColor    = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+                    ),
+                    modifier  = Modifier.size(34.dp),
+                    shape     = CircleShape
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "立即执行", modifier = Modifier.size(16.dp))
+                }
+
+                Box {
+                    IconButton(onClick = { showMoreMenu = true }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "更多操作",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
+                        DropdownMenuItem(
+                            text        = { Text("查看/编辑代码") },
+                            leadingIcon = { Icon(Icons.Default.Terminal, null) },
+                            onClick     = { showMoreMenu = false; onOpenDetail() }
+                        )
+                        DropdownMenuItem(
+                            text        = { Text("查看日志记录") },
+                            leadingIcon = { Icon(Icons.Default.History, null) },
+                            onClick     = { showMoreMenu = false; onViewLogs() }
+                        )
+                        if (script.isFolder) {
+                            DropdownMenuItem(
+                                text        = { Text("编辑项目信息") },
+                                leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                onClick     = { showMoreMenu = false; onEditRequest() }
                             )
                         }
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text        = { Text("删除脚本", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                            onClick     = { showMoreMenu = false; onDeleteRequest() }
+                        )
                     }
                 }
             }
         }
+
+        AnimatedVisibility(visible = script.isFolder && dependencyStatusEnum != DependencyStatus.None) {
+            Row(
+                modifier              = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 62.dp, bottom = 10.dp),
+                verticalAlignment    = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val (statusText, statusColor) = when (dependencyStatusEnum) {
+                    DependencyStatus.Configured -> "检测到未安装依赖环境" to MaterialTheme.colorScheme.tertiary
+                    DependencyStatus.Installed  -> "依赖环境已完全就绪" to TerminalSuccess
+                    DependencyStatus.Error      -> "依赖配置失败，环境异常" to MaterialTheme.colorScheme.error
+                    else                        -> "" to Color.Unspecified
+                }
+                Box(modifier = Modifier.size(6.dp).background(statusColor, CircleShape))
+                Text(
+                    text       = statusText,
+                    style      = MaterialTheme.typography.labelSmall,
+                    color      = statusColor,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        // 贴底分隔线，营造截图中"扁平列表"的连续感，取代卡片间距
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
     }
 }
 
