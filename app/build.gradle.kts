@@ -111,5 +111,5 @@ dependencies {
     val soraVersion = "0.24.6"
     implementation("io.github.rosemoe:editor-bom:$soraVersion")
     implementation("io.github.rosemoe:editor")
-    implementation("io.github.rosemoe:language-textmate:$soraVersion")
+    implementation("io.github.rosemoe:language-textmate")
 }
