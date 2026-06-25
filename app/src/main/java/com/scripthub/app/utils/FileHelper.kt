@@ -39,7 +39,7 @@ object FileHelper {
             if (file.isDirectory) {
                 val entryPoint = detectEntryPoint(file)
                 list.add(PhysicalItem(name = file.name, isFolder = true, entryPoint = entryPoint))
-            } else if (file.isFile && (file.extension == "js" || file.extension == "py" || file.extension == "sh")) {
+            } else if (file.isFile && file.extension.isNotBlank()) {
                 list.add(PhysicalItem(name = file.name, isFolder = false))
             }
         }
