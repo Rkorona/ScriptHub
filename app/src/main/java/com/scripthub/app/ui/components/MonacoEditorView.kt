@@ -1,10 +1,13 @@
 package com.scripthub.app.ui.components
 
 import android.annotation.SuppressLint
+import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.util.Log
+import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -18,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebChromeClient
 import android.webkit.ConsoleMessage
@@ -81,6 +85,9 @@ class MonacoEditorController(private val webView: WebView) {
 
     /** 聚焦编辑器 */
     fun focus() = evalJs("focusEditor()")
+
+    /** 强制重新布局（Android WebView 尺寸变化时需手动触发） */
+    fun layout() = evalJs("layoutEditor()")
 
     // ── 内部工具 ──────────────────────────────────────────────────
 
@@ -162,14 +169,29 @@ fun MonacoEditorView(
     // controller 持有 WebView 引用；WebView 在 AndroidView factory 中创建
     val controllerRef = remember { mutableStateOf<MonacoEditorController?>(null) }
 
-    Box(modifier = modifier) {
+    Box(
+        modifier = modifier.onSizeChanged { size ->
+            if (isReady && size.width > 0 && size.height > 0) {
+                controllerRef.value?.layout()
+            }
+        }
+    ) {
 
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
+                    // WebView 必须 MATCH_PARENT，否则在 Compose 中高度可能为 0
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    setBackgroundColor(Color.parseColor(if (isDark) "#0D0D0D" else "#FAFAFA"))
+
                     // ── WebView 基础与安全权限配置 ──────────────────────────────
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
                     
                     // 极其重要：显式允许访问文件系统资源，确保 assets 目录完全对 WebView 可读
                     settings.allowFileAccess = true
@@ -211,6 +233,10 @@ fun MonacoEditorView(
         
                     // ── 优化路由拦截 ─────────────────────────────────────
                     webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            view?.post { view.evaluateJavascript("layoutEditor()", null) }
+                        }
+
                         override fun shouldOverrideUrlLoading(
                             view: WebView?, request: WebResourceRequest?
                         ): Boolean {
@@ -225,6 +251,15 @@ fun MonacoEditorView(
                         }
                     }
         
+                    // 页面加载后 WebView 尺寸变化时触发布局
+                    viewTreeObserver.addOnGlobalLayoutListener(object : ViewTreeObserver.OnGlobalLayoutListener {
+                        override fun onGlobalLayout() {
+                            if (width > 0 && height > 0) {
+                                evaluateJavascript("layoutEditor()", null)
+                            }
+                        }
+                    })
+
                     // 创建 controller 并加载宿主页面
                     controllerRef.value = MonacoEditorController(this)
                     loadUrl("file:///android_asset/monaco/editor.html")
@@ -264,6 +299,7 @@ fun MonacoEditorView(
         if (initialContent.isNotEmpty()) {
             controller.setContent(initialContent)
         }
+        controller.layout()
         initDone = true
         onEditorReady(controller)
     }
@@ -272,6 +308,7 @@ fun MonacoEditorView(
     LaunchedEffect(isDark) {
         if (isReady) {
             controllerRef.value?.setTheme(isDark)
+            controllerRef.value?.layout()
         }
     }
 }
