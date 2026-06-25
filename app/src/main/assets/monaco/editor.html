@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #editor { width: 100%; height: 100%; }
+    /* 离线时的错误提示 */
+    #error-msg {
+      display: none;
+      position: fixed; inset: 0;
+      background: #1e1e1e; color: #f48771;
+      font-family: monospace; font-size: 14px;
+      padding: 32px; line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+<div id="editor"></div>
+<div id="error-msg"></div>
+
+<!--
+  ════════════════════════════════════════════════════════════════
+  离线使用方式（推荐）：
+    1. 从 https://github.com/microsoft/monaco-editor/releases
+       下载 monaco-editor-x.x.x.tgz
+    2. 解压后将 package/min/vs/ 整个文件夹
+       放入 app/src/main/assets/monaco/vs/
+    3. 本页已使用相对路径 'vs'，无需修改任何代码
+
+  开发阶段（需联网）：
+    将下面 require.config 中的 'vs' 改为 CDN 路径：
+    'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs'
+  ════════════════════════════════════════════════════════════════
+-->
+<script src="vs/loader.js" onerror="onLoaderError()"></script>
+<script>
+function onLoaderError() {
+  document.getElementById('error-msg').style.display = 'block';
+  document.getElementById('error-msg').innerText =
+    'Monaco 资源未找到。\n\n请下载 Monaco Editor 并放置到:\nassets/monaco/vs/\n\n' +
+    '下载地址:\nhttps://github.com/microsoft/monaco-editor/releases\n\n' +
+    '开发阶段可在 editor.html 中改用 CDN。';
+  if (typeof AndroidBridge !== 'undefined') {
+    AndroidBridge.onError('Monaco loader not found. Place monaco/vs/ in assets.');
+  }
+}
+
+if (typeof require !== 'undefined') {
+  // ── loader.js 加载成功，使用本地资源 ──────────────────────────
+  require.config({ paths: { vs: 'vs' } });
+
+  require(['vs/editor/editor.main'], function () {
+    initEditor();
+  });
+} // else: onerror 已处理
+
+function initEditor() {
+  window.monaco = monaco;
+
+  // ── 自定义 OLED 深色主题，匹配 ScriptHub 风格 ─────────────────
+  monaco.editor.defineTheme('scripthub-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment',    foreground: '6A9955', fontStyle: 'italic' },
+      { token: 'keyword',    foreground: 'C586C0' },
+      { token: 'string',     foreground: 'CE9178' },
+      { token: 'number',     foreground: 'B5CEA8' },
+      { token: 'type',       foreground: '4EC9B0' },
+      { token: 'function',   foreground: 'DCDCAA' },
+      { token: 'variable',   foreground: '9CDCFE' },
+      { token: 'operator',   foreground: 'D4D4D4' },
+    ],
+    colors: {
+      'editor.background':           '#0D0D0D',
+      'editor.foreground':           '#D4D4D4',
+      'editor.lineHighlightBackground': '#1A1A1A',
+      'editor.selectionBackground':  '#264F78',
+      'editorLineNumber.foreground': '#3C3C3C',
+      'editorLineNumber.activeForeground': '#858585',
+      'editorCursor.foreground':     '#AEAFAD',
+      'editorIndentGuide.background1': '#1E1E1E',
+      'editorWidget.background':     '#1E1E1E',
+      'editorSuggestWidget.background': '#1E1E1E',
+      'editorSuggestWidget.border':  '#454545',
+      'editorSuggestWidget.selectedBackground': '#094771',
+    }
+  });
+
+  monaco.editor.defineTheme('scripthub-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [],
+    colors: {
+      'editor.background': '#FAFAFA',
+    }
+  });
+
+  window.editor = monaco.editor.create(document.getElementById('editor'), {
+    value:      '',
+    language:   'plaintext',
+    theme:      'scripthub-dark',
+    fontSize:   13,
+    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+    lineNumbers: 'on',
+    minimap:    { enabled: false },
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    wordWrap:   'off',
+    tabSize:    4,
+    insertSpaces: true,
+    renderWhitespace: 'selection',
+    renderLineHighlight: 'line',
+    cursorBlinking: 'smooth',
+    smoothScrolling: true,
+    // 移动端优化
+    contextmenu:           false,   // 禁用右键菜单（移动端无用）
+    mouseWheelZoom:        false,
+    selectionHighlight:    true,
+    occurrencesHighlight:  'off',
+    codeLens:              false,
+    lightbulb:             { enabled: 'off' },
+    // 补全配置
+    quickSuggestions: {
+      other:    true,
+      comments: false,
+      strings:  false
+    },
+    suggestOnTriggerCharacters: true,
+    acceptSuggestionOnEnter: 'on',
+    tabCompletion: 'on',
+    suggest: {
+      showMethods:    true,
+      showFunctions:  true,
+      showVariables:  true,
+      showWords:      true,
+      showKeywords:   true,
+    }
+  });
+
+  // ── 内容变化 → 只回传统计数据（不回传全文，性能友好）─────────────
+  window.editor.onDidChangeModelContent(function () {
+    var model = window.editor.getModel();
+    AndroidBridge.onStatsChanged(model.getLineCount(), model.getValueLength());
+  });
+
+  // ── 光标移动 ─────────────────────────────────────────────────────
+  window.editor.onDidChangeCursorPosition(function (e) {
+    AndroidBridge.onCursorChanged(e.position.lineNumber, e.position.column);
+  });
+
+  // ── 编辑器就绪 ───────────────────────────────────────────────────
+  AndroidBridge.onReady();
+}
+
+// ════════════════════════════════════════════════════════════════
+// Kotlin → JS 调用 API（通过 WebView.evaluateJavascript 调用）
+// ════════════════════════════════════════════════════════════════
+
+/** 设置内容（Base64 编码，安全处理任意字符）*/
+function setContent(base64) {
+  try {
+    var content = decodeURIComponent(escape(atob(base64)));
+    // 保留撤销历史：用 pushEditOperations 替代 setValue
+    var model = window.editor.getModel();
+    var fullRange = model.getFullModelRange();
+    window.editor.pushUndoStop();
+    model.pushEditOperations([], [{
+      range: fullRange,
+      text: content
+    }], function () { return null; });
+    window.editor.pushUndoStop();
+    // 滚动到顶部
+    window.editor.setPosition({ lineNumber: 1, column: 1 });
+    window.editor.revealLine(1);
+  } catch (e) {
+    console.error('setContent error', e);
+  }
+}
+
+/** 获取内容（返回 Base64，供 evaluateJavascript callback 读取）*/
+function getContentBase64() {
+  try {
+    return btoa(unescape(encodeURIComponent(window.editor.getValue())));
+  } catch (e) {
+    return '';
+  }
+}
+
+/** 设置语言 */
+function setLanguage(lang) {
+  monaco.editor.setModelLanguage(window.editor.getModel(), lang);
+}
+
+/** 设置主题：'scripthub-dark' | 'scripthub-light' | 'vs-dark' | 'vs' */
+function setTheme(theme) {
+  monaco.editor.setTheme(theme);
+}
+
+/** 在光标处插入文字（代码键盘调用）*/
+function typeText(base64) {
+  try {
+    var text = decodeURIComponent(escape(atob(base64)));
+    window.editor.trigger('keyboard', 'type', { text: text });
+  } catch (e) {}
+}
+
+/** 撤销 */
+function editorUndo() {
+  window.editor.trigger('keyboard', 'undo', null);
+}
+
+/** 重做 */
+function editorRedo() {
+  window.editor.trigger('keyboard', 'redo', null);
+}
+
+/** 光标移动：left | right | up | down */
+function moveCursor(direction) {
+  var map = {
+    left:  'cursorLeft',
+    right: 'cursorRight',
+    up:    'cursorUp',
+    down:  'cursorDown'
+  };
+  if (map[direction]) {
+    window.editor.trigger('keyboard', map[direction], null);
+  }
+}
+
+/** 聚焦编辑器（代码键盘按键后重新聚焦）*/
+function focusEditor() {
+  window.editor.focus();
+}
+</script>
+</body>
+</html>

@@ -1,7 +1,5 @@
 package com.scripthub.app.ui.screens
 
-import android.view.KeyEvent
-import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,37 +23,88 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scripthub.app.ui.components.FolderFileBrowserSheet
-import com.scripthub.app.ui.components.SoraEditorView
+import com.scripthub.app.ui.components.MonacoEditorController
+import com.scripthub.app.ui.components.MonacoEditorView
 import com.scripthub.app.ui.components.TerminalConsoleBottomSheet
 import com.scripthub.app.utils.FileHelper
-import io.github.rosemoe.sora.widget.CodeEditor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // ──────────────────────────────────────────────────────────────────
-// 语言枚举 & 检测
+// 语言枚举 & 检测（Monaco language ID）
 // ──────────────────────────────────────────────────────────────────
 
-enum class EditorLang(val label: String, val scopeName: String?) {
-    JAVASCRIPT("JavaScript", "source.js"),
-    PYTHON("Python",         "source.python"),
-    SHELL("Shell",           "source.shell"),
-    JSON("JSON",             "source.json"),
-    PLAIN("Text",            null)
+enum class EditorLang(val label: String, val monacoId: String) {
+    // Web
+    JAVASCRIPT("JavaScript",  "javascript"),
+    TYPESCRIPT("TypeScript",  "typescript"),
+    HTML("HTML",              "html"),
+    CSS("CSS",                "css"),
+    SCSS("SCSS",              "scss"),
+    JSON("JSON",              "json"),
+    // Systems
+    PYTHON("Python",          "python"),
+    KOTLIN("Kotlin",          "kotlin"),
+    JAVA("Java",              "java"),
+    CPP("C++",                "cpp"),
+    C("C",                    "c"),
+    RUST("Rust",              "rust"),
+    GO("Go",                  "go"),
+    SWIFT("Swift",            "swift"),
+    // Scripting
+    SHELL("Shell",            "shell"),
+    LUA("Lua",                "lua"),
+    RUBY("Ruby",              "ruby"),
+    PHP("PHP",                "php"),
+    // Data / Config
+    YAML("YAML",              "yaml"),
+    TOML("TOML",              "ini"),     // Monaco 用 ini 近似
+    XML("XML",                "xml"),
+    SQL("SQL",                "sql"),
+    MARKDOWN("Markdown",      "markdown"),
+    DOCKERFILE("Dockerfile",  "dockerfile"),
+    // Fallback
+    PLAIN("Text",             "plaintext")
 }
 
-private fun detectLang(name: String): EditorLang = when {
-    name.endsWith(".py",   true) || name.endsWith(".pyw", true)          -> EditorLang.PYTHON
-    name.endsWith(".sh",   true) || name.endsWith(".bash", true)         -> EditorLang.SHELL
-    name.endsWith(".js",   true) || name.endsWith(".mjs", true) ||
-    name.endsWith(".cjs",  true) || name.endsWith(".ts",  true)          -> EditorLang.JAVASCRIPT
-    name.endsWith(".json", true)                                          -> EditorLang.JSON
-    else                                                                  -> EditorLang.PLAIN
+private fun detectLang(name: String): EditorLang {
+    val ext = name.substringAfterLast('.', "").lowercase()
+    return when (ext) {
+        "js", "mjs", "cjs"         -> EditorLang.JAVASCRIPT
+        "ts", "mts", "cts"         -> EditorLang.TYPESCRIPT
+        "html", "htm"              -> EditorLang.HTML
+        "css"                      -> EditorLang.CSS
+        "scss", "sass"             -> EditorLang.SCSS
+        "json", "jsonc"            -> EditorLang.JSON
+        "py", "pyw", "pyi"         -> EditorLang.PYTHON
+        "kt", "kts"                -> EditorLang.KOTLIN
+        "java"                     -> EditorLang.JAVA
+        "cpp", "cc", "cxx", "hpp" -> EditorLang.CPP
+        "c", "h"                   -> EditorLang.C
+        "rs"                       -> EditorLang.RUST
+        "go"                       -> EditorLang.GO
+        "swift"                    -> EditorLang.SWIFT
+        "sh", "bash", "zsh"        -> EditorLang.SHELL
+        "lua"                      -> EditorLang.LUA
+        "rb"                       -> EditorLang.RUBY
+        "php"                      -> EditorLang.PHP
+        "yaml", "yml"              -> EditorLang.YAML
+        "toml"                     -> EditorLang.TOML
+        "xml", "svg"               -> EditorLang.XML
+        "sql"                      -> EditorLang.SQL
+        "md", "markdown"           -> EditorLang.MARKDOWN
+        "dockerfile"               -> EditorLang.DOCKERFILE
+        else -> when {
+            name.equals("Dockerfile", ignoreCase = true) -> EditorLang.DOCKERFILE
+            name.equals("Makefile",   ignoreCase = true) -> EditorLang.SHELL
+            else -> EditorLang.PLAIN
+        }
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────
-// 工具栏按钮 — 重新设计
+// 工具栏按钮
 // ──────────────────────────────────────────────────────────────────
 
 @Composable
@@ -96,9 +145,9 @@ private fun ToolbarAction(
 
 @Composable
 private fun RunToolbarAction(
-    enabled: Boolean = true,
+    enabled:  Boolean = true,
     isSaving: Boolean = false,
-    onClick: () -> Unit
+    onClick:  () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     Column(
@@ -112,15 +161,15 @@ private fun RunToolbarAction(
             .padding(horizontal = 4.dp)
     ) {
         Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = colors.primaryContainer,
+            shape    = RoundedCornerShape(10.dp),
+            color    = colors.primaryContainer,
             modifier = Modifier.size(width = 36.dp, height = 26.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 if (isSaving) {
                     CircularProgressIndicator(
-                        modifier  = Modifier.size(14.dp),
-                        color     = colors.onPrimaryContainer,
+                        modifier    = Modifier.size(14.dp),
+                        color       = colors.onPrimaryContainer,
                         strokeWidth = 2.dp
                     )
                 } else {
@@ -150,19 +199,19 @@ private fun RunToolbarAction(
 
 @Composable
 private fun CodeKey(
-    label:    String,
-    wide:     Boolean  = false,
-    special:  Boolean  = false,
-    onClick:  () -> Unit
+    label:   String,
+    wide:    Boolean = false,
+    special: Boolean = false,
+    onClick: () -> Unit
 ) {
     val colors     = MaterialTheme.colorScheme
     val bgColor    = if (special) colors.surfaceContainerHighest else colors.surfaceContainerHigh
     val labelColor = if (special) colors.onSurface               else colors.onSurfaceVariant
 
     Surface(
-        onClick = onClick,
-        shape   = RoundedCornerShape(7.dp),
-        color   = bgColor,
+        onClick  = onClick,
+        shape    = RoundedCornerShape(7.dp),
+        color    = bgColor,
         modifier = Modifier
             .height(34.dp)
             .then(if (wide) Modifier.width(54.dp) else Modifier.widthIn(min = 40.dp))
@@ -183,21 +232,6 @@ private fun CodeKey(
 }
 
 // ──────────────────────────────────────────────────────────────────
-// 辅助：向编辑器输入文字
-// ──────────────────────────────────────────────────────────────────
-
-private fun CodeEditor.typeText(text: String) {
-    val line = cursor.leftLine
-    val col  = cursor.leftColumn
-    this.text.insert(line, col, text)
-}
-
-private fun CodeEditor.sendKey(keyCode: Int) {
-    dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-    dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP,   keyCode))
-}
-
-// ──────────────────────────────────────────────────────────────────
 // 主屏幕
 // ──────────────────────────────────────────────────────────────────
 
@@ -214,17 +248,19 @@ fun ScriptEditorScreen(
     val lang        = remember(fileName, entryPoint) { detectLang(if (isFolder) entryPoint else fileName) }
     val displayName = if (isFolder) entryPoint else fileName
 
-    var initialContent by remember { mutableStateOf("") }
-    var isFileLoaded   by remember { mutableStateOf(false) }
-    var isSaving       by remember { mutableStateOf(false) }
-    var showTerminal   by remember { mutableStateOf(false) }
+    var initialContent  by remember { mutableStateOf("") }
+    var isFileLoaded    by remember { mutableStateOf(false) }
+    var isSaving        by remember { mutableStateOf(false) }
+    var showTerminal    by remember { mutableStateOf(false) }
     var showFileBrowser by remember { mutableStateOf(false) }
-    val editorRef      = remember { mutableStateOf<CodeEditor?>(null) }
 
-    var lineCount   by remember { mutableIntStateOf(1) }
-    var charCount   by remember { mutableIntStateOf(0) }
-    var cursorLine  by remember { mutableIntStateOf(1) }
-    var cursorCol   by remember { mutableIntStateOf(1) }
+    // Monaco 控制器（替代原来的 CodeEditor 引用）
+    val controllerRef = remember { mutableStateOf<MonacoEditorController?>(null) }
+
+    var lineCount  by remember { mutableIntStateOf(1) }
+    var charCount  by remember { mutableIntStateOf(0) }
+    var cursorLine by remember { mutableIntStateOf(1) }
+    var cursorCol  by remember { mutableIntStateOf(1) }
 
     // ── 文件加载 ────────────────────────────────────────────────────
     LaunchedEffect(fileName, entryPoint) {
@@ -237,35 +273,39 @@ fun ScriptEditorScreen(
         isFileLoaded   = true
     }
 
-    LaunchedEffect(isFileLoaded, editorRef.value) {
-        if (isFileLoaded) {
-            editorRef.value?.also { e ->
-                if (e.text.length == 0 && initialContent.isNotEmpty()) e.setText(initialContent)
-            }
-        }
-    }
-
     // ── 动作函数 ────────────────────────────────────────────────────
-    fun saveFile(silent: Boolean = false) {
+
+    /** 保存文件：异步从 Monaco 取内容后写入磁盘 */
+    fun saveFile(silent: Boolean = false, onDone: (() -> Unit)? = null) {
+        val controller = controllerRef.value ?: return
         isSaving = true
-        val content = editorRef.value?.text?.toString() ?: ""
-        scope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                FileHelper.writeScriptContent(fileName, isFolder, entryPoint, content)
+        controller.getContent { content ->
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    FileHelper.writeScriptContent(fileName, isFolder, entryPoint, content)
+                }
+                isSaving = false
+                if (!silent) {
+                    Toast.makeText(context, if (ok) "已保存" else "保存失败", Toast.LENGTH_SHORT).show()
+                }
+                onDone?.invoke()
             }
-            isSaving = false
-            if (!silent) Toast.makeText(context, if (ok) "已保存" else "保存失败", Toast.LENGTH_SHORT).show()
         }
     }
 
+    /** 保存后运行 */
     fun runScript() {
         if (isSaving) return
         isSaving = true
-        val content = editorRef.value?.text?.toString() ?: ""
-        scope.launch {
-            withContext(Dispatchers.IO) { FileHelper.writeScriptContent(fileName, isFolder, entryPoint, content) }
-            isSaving = false
-            showTerminal = true
+        val controller = controllerRef.value ?: run { isSaving = false; return }
+        controller.getContent { content ->
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    FileHelper.writeScriptContent(fileName, isFolder, entryPoint, content)
+                }
+                isSaving = false
+                showTerminal = true
+            }
         }
     }
 
@@ -287,7 +327,6 @@ fun ScriptEditorScreen(
                             .fillMaxWidth()
                             .statusBarsPadding()
                     ) {
-                        // 左组：可横向滚动，避免按钮被挤压
                         Row(
                             modifier = Modifier
                                 .weight(1f)
@@ -314,13 +353,11 @@ fun ScriptEditorScreen(
                             }
                         }
 
-                        // 分隔线
                         VerticalDivider(
                             modifier = Modifier.height(32.dp),
                             color    = colors.outlineVariant
                         )
 
-                        // 右组：日志  [运行]  撤销  重做  保存
                         Row {
                             ToolbarAction(Icons.Default.Article, "日志") { showTerminal = true }
 
@@ -330,10 +367,10 @@ fun ScriptEditorScreen(
                             ) { runScript() }
 
                             ToolbarAction(Icons.Default.Undo, "撤销", enabled = isFileLoaded) {
-                                editorRef.value?.undo()
+                                controllerRef.value?.undo()
                             }
                             ToolbarAction(Icons.Default.Redo, "重做", enabled = isFileLoaded) {
-                                editorRef.value?.redo()
+                                controllerRef.value?.redo()
                             }
                             ToolbarAction(
                                 Icons.Default.Save, "保存",
@@ -381,7 +418,7 @@ fun ScriptEditorScreen(
                         Spacer(Modifier.weight(1f))
 
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalAlignment     = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
@@ -391,9 +428,9 @@ fun ScriptEditorScreen(
                                 color      = colors.onSurfaceVariant
                             )
                             Text(
-                                text  = "·",
+                                text     = "·",
                                 fontSize = 10.sp,
-                                color = colors.outlineVariant
+                                color    = colors.outlineVariant
                             )
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
@@ -425,12 +462,11 @@ fun ScriptEditorScreen(
                     HorizontalDivider(color = colors.outlineVariant)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
+                        modifier          = Modifier
                             .fillMaxWidth()
                             .height(28.dp)
                             .padding(horizontal = 12.dp)
                     ) {
-                        // 左侧：光标位置
                         Text(
                             text       = "Ln $cursorLine, Col $cursorCol",
                             fontSize   = 10.sp,
@@ -448,10 +484,7 @@ fun ScriptEditorScreen(
                             fontFamily = FontFamily.Monospace,
                             color      = colors.onSurfaceVariant
                         )
-
                         Spacer(Modifier.weight(1f))
-
-                        // 右侧：语言标签
                         Surface(
                             shape = RoundedCornerShape(3.dp),
                             color = colors.surfaceContainerHigh
@@ -469,7 +502,7 @@ fun ScriptEditorScreen(
 
                     HorizontalDivider(color = colors.outlineVariant)
 
-                    // ── 第一行：常用符号（去掉 fn/ESC/↑/TAB）──────
+                    // ── 第一行：常用符号 ──────────────────────────────
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment     = Alignment.CenterVertically,
@@ -479,7 +512,9 @@ fun ScriptEditorScreen(
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
                         listOf("(", ")", "/", "=", ",", ";", "\"", "'").forEach { sym ->
-                            CodeKey(sym) { editorRef.value?.typeText(sym) }
+                            CodeKey(sym) {
+                                controllerRef.value?.typeText(sym)
+                            }
                         }
                     }
 
@@ -494,13 +529,15 @@ fun ScriptEditorScreen(
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        CodeKey("←",  special = true) { editorRef.value?.sendKey(KeyEvent.KEYCODE_DPAD_LEFT) }
-                        CodeKey("↑",  special = true) { editorRef.value?.sendKey(KeyEvent.KEYCODE_DPAD_UP) }
-                        CodeKey("↓",  special = true) { editorRef.value?.sendKey(KeyEvent.KEYCODE_DPAD_DOWN) }
-                        CodeKey("→",  special = true) { editorRef.value?.sendKey(KeyEvent.KEYCODE_DPAD_RIGHT) }
+                        CodeKey("←", special = true) { controllerRef.value?.moveCursor("left")  }
+                        CodeKey("↑", special = true) { controllerRef.value?.moveCursor("up")    }
+                        CodeKey("↓", special = true) { controllerRef.value?.moveCursor("down")  }
+                        CodeKey("→", special = true) { controllerRef.value?.moveCursor("right") }
 
                         listOf("{", "}", "[", "]", "`", "<", ">", "-", "!").forEach { sym ->
-                            CodeKey(sym) { editorRef.value?.typeText(sym) }
+                            CodeKey(sym) {
+                                controllerRef.value?.typeText(sym)
+                            }
                         }
                     }
                 }
@@ -528,10 +565,10 @@ fun ScriptEditorScreen(
                 }
             }
         } else {
-            SoraEditorView(
+            MonacoEditorView(
                 initialContent = initialContent,
-                scopeName      = lang.scopeName,
-                onEditorReady  = { editor -> editorRef.value = editor },
+                language       = lang.monacoId,
+                onEditorReady  = { controller -> controllerRef.value = controller },
                 onStats        = { lines, chars -> lineCount = lines; charCount = chars },
                 onCursor       = { line, col -> cursorLine = line; cursorCol = col },
                 modifier       = Modifier
