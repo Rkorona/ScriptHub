@@ -1,22 +1,19 @@
 {
-  "grammars": [
+  "languages": [
     {
-      "name": "JavaScript",
+      "name": "javascript",
       "scopeName": "source.js",
-      "path": "textmate/javascript.tmLanguage.json",
-      "embeddedLanguages": {}
+      "grammar": "textmate/javascript.tmLanguage.json"
     },
     {
-      "name": "Python",
+      "name": "python",
       "scopeName": "source.python",
-      "path": "textmate/python.tmLanguage.json",
-      "embeddedLanguages": {}
+      "grammar": "textmate/python.tmLanguage.json"
     },
     {
-      "name": "Shell Script",
+      "name": "shell",
       "scopeName": "source.shell",
-      "path": "textmate/shell.tmLanguage.json",
-      "embeddedLanguages": {}
+      "grammar": "textmate/shell.tmLanguage.json"
     }
   ]
 }

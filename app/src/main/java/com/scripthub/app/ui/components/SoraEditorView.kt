@@ -1,6 +1,7 @@
 package com.scripthub.app.ui.components
 
 import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,37 +25,52 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.tm4e.core.registry.IThemeSource
 
+private const val TAG = "SoraEditorView"
+
 // ──────────────────────────────────────────────────────────────────
-// TextMate 单例初始化
+// TextMate 单例初始化 — 全局只执行一次
 // ──────────────────────────────────────────────────────────────────
 
 @Volatile private var tmReady = false
+@Volatile private var tmFailed = false
 
 private suspend fun ensureTextMateReady(context: Context) {
-    if (tmReady) return
+    if (tmReady || tmFailed) return
     withContext(Dispatchers.IO) {
-        if (tmReady) return@withContext
+        if (tmReady || tmFailed) return@withContext
         try {
+            // 1. 注册 Assets 文件解析器（FileProviderRegistry 负责解析所有 textmate 路径）
             FileProviderRegistry.getInstance().addFileProvider(
-                AssetsFileResolver(context.assets)
+                AssetsFileResolver(context.applicationContext.assets)
             )
-            for ((name, path) in listOf(
-                "sora_dark"  to "textmate/sora_dark.json",
-                "sora_light" to "textmate/sora_light.json"
-            )) {
-                ThemeRegistry.getInstance().loadTheme(
+
+            // 2. 加载主题（深色 / 浅色）
+            val themeRegistry = ThemeRegistry.getInstance()
+            for ((name, isDark) in listOf("sora_dark" to true, "sora_light" to false)) {
+                val path = "textmate/$name.json"
+                themeRegistry.loadTheme(
                     ThemeModel(
                         IThemeSource.fromInputStream(
-                            context.assets.open(path), path, null
+                            FileProviderRegistry.getInstance().tryGetInputStream(path),
+                            path,
+                            null
                         ),
                         name
-                    )
+                    ).apply {
+                        this.isDark = isDark
+                    }
                 )
             }
+
+            // 3. 加载语法文件清单
+            // 注意：格式必须是 {"languages":[{"name":"...","scopeName":"...","grammar":"..."}]}
             GrammarRegistry.getInstance().loadGrammars("textmate/grammars.json")
+
             tmReady = true
+            Log.d(TAG, "TextMate 初始化成功")
         } catch (e: Exception) {
-            e.printStackTrace()
+            tmFailed = true
+            Log.e(TAG, "TextMate 初始化失败", e)
         }
     }
 }
@@ -65,7 +81,7 @@ private fun applyTheme(editor: CodeEditor, isDark: Boolean) {
         ThemeRegistry.getInstance().setTheme(if (isDark) "sora_dark" else "sora_light")
         editor.colorScheme = TextMateColorScheme.create(ThemeRegistry.getInstance())
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e(TAG, "主题应用失败", e)
     }
 }
 
@@ -74,7 +90,7 @@ private fun applyLanguage(editor: CodeEditor, scopeName: String?) {
     try {
         editor.setEditorLanguage(TextMateLanguage.create(scopeName, true))
     } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e(TAG, "语言设置失败: $scopeName", e)
     }
 }
 
@@ -83,12 +99,10 @@ private fun applyLanguage(editor: CodeEditor, scopeName: String?) {
 // ──────────────────────────────────────────────────────────────────
 
 /**
- * Sora Editor 封装组件
- *
- * @param initialContent  文件初始内容（只在 factory 时使用，避免反复 setText）
- * @param scopeName       TextMate 语言 scope，如 "source.js" / "source.python"，null 表示纯文本
- * @param onEditorReady   编辑器创建后回调，用于保存时读取内容
- * @param onStats         内容变化时回调行数/字符数，用于状态栏
+ * @param initialContent  文件初始内容（在 factory 时一次性写入）
+ * @param scopeName       TextMate scope，如 "source.js"，null 表示纯文本
+ * @param onEditorReady   编辑器实例回调，保存时通过 editor.text.toString() 读取内容
+ * @param onStats         每次内容变化时回调行数/字符数
  */
 @Composable
 fun SoraEditorView(
@@ -105,7 +119,7 @@ fun SoraEditorView(
 
     LaunchedEffect(Unit) {
         ensureTextMateReady(context)
-        isReady = true
+        isReady = true  // tmFailed 时也进入 ready 状态（editor 以无语法模式显示）
     }
 
     if (!isReady) {
@@ -116,10 +130,6 @@ fun SoraEditorView(
     }
 
     val lastDark = remember { mutableStateOf<Boolean?>(null) }
-
-    DisposableEffect(Unit) {
-        onDispose { /* CodeEditor cleans up itself on detach */ }
-    }
 
     AndroidView(
         factory = { ctx ->
@@ -134,27 +144,22 @@ fun SoraEditorView(
 
                 applyTheme(editor, isDark)
                 lastDark.value = isDark
-
                 applyLanguage(editor, scopeName)
 
                 editor.setText(initialContent)
 
                 editor.subscribeEvent(ContentChangeEvent::class.java) { _, _ ->
-                    val lines = editor.lineCount
-                    val chars = editor.text.length
-                    onStats(lines, chars)
+                    onStats(editor.lineCount, editor.text.length)
                 }
-
                 onEditorReady(editor)
             }
         },
         update = { editor ->
-            val newDark = isDark
-            if (lastDark.value != newDark) {
-                lastDark.value = newDark
-                applyTheme(editor, newDark)
+            if (lastDark.value != isDark) {
+                lastDark.value = isDark
+                applyTheme(editor, isDark)
             }
         },
-        modifier = modifier
+        modifier = modifier.fillMaxSize()
     )
 }
