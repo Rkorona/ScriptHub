@@ -19,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebChromeClient
+import android.webkit.ConsoleMessage
 
 private const val TAG = "MonacoEditorView"
 
@@ -165,19 +167,37 @@ fun MonacoEditorView(
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
-                    // ── WebView 基础配置 ──────────────────────────────
+                    // ── WebView 基础与安全权限配置 ──────────────────────────────
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    // 允许 file:// 页面加载同源 file:// 资源（assets 目录）
+                    
+                    // 极其重要：显式允许访问文件系统资源，确保 assets 目录完全对 WebView 可读
+                    settings.allowFileAccess = true
                     @Suppress("DEPRECATION")
                     settings.allowFileAccessFromFileURLs = true
                     @Suppress("DEPRECATION")
                     settings.allowUniversalAccessFromFileURLs = true
+                    
                     // 禁用缩放
                     settings.setSupportZoom(false)
                     settings.builtInZoomControls = false
                     settings.displayZoomControls = false
-
+        
+                    // ── 新增：日志调试支持（再遇到空白屏时，可在 Logcat 过滤器输入 MonacoJS 查明真相） ──
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                            consoleMessage?.let {
+                                val msg = "[Monaco JS] ${it.message()} (${it.sourceId()}:${it.lineNumber()})"
+                                if (it.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                                    Log.e(TAG, msg)
+                                } else {
+                                    Log.d(TAG, msg)
+                                }
+                            }
+                            return true
+                        }
+                    }
+        
                     // ── JS Bridge ─────────────────────────────────────
                     addJavascriptInterface(
                         MonacoBridge(
@@ -188,26 +208,32 @@ fun MonacoEditorView(
                         ),
                         "AndroidBridge"
                     )
-
+        
+                    // ── 优化路由拦截 ─────────────────────────────────────
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView?, request: WebResourceRequest?
                         ): Boolean {
-                            // 拦截所有导航，只允许加载 asset 页面
-                            return request?.url?.scheme != "file"
+                            val url = request?.url?.toString() ?: return false
+                            // 允许本地 assets 页面内的所有正常跳转和资源加载
+                            return if (url.startsWith("file:///android_asset/")) {
+                                false
+                            } else {
+                                // 如果点击了外部超链接，在这里可以选择拦截或用外部浏览器打开
+                                true
+                            }
                         }
                     }
-
-                    // 创建 controller（此时 WebView 已实例化）
+        
+                    // 创建 controller 并加载宿主页面
                     controllerRef.value = MonacoEditorController(this)
-
-                    // 加载 Monaco 宿主页面
                     loadUrl("file:///android_asset/monaco/editor.html")
                 }
             },
             update = { /* 主题变化由 LaunchedEffect 处理 */ },
             modifier = Modifier.fillMaxSize()
         )
+
 
         // ── 就绪前显示 Loading ─────────────────────────────────────
         if (!isReady && errorMsg == null) {

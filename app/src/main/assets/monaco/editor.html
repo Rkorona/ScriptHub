@@ -40,13 +40,43 @@
 function onLoaderError() {
   document.getElementById('error-msg').style.display = 'block';
   document.getElementById('error-msg').innerText =
-    'Monaco 资源未找到。\n\n请下载 Monaco Editor 并放置到:\nassets/monaco/vs/\n\n' +
-    '下载地址:\nhttps://github.com/microsoft/monaco-editor/releases\n\n' +
-    '开发阶段可在 editor.html 中改用 CDN。';
+    'Monaco 资源未找到。\n\n请下载 Monaco Editor 并放置到:\nassets/monaco/vs/\n\n';
   if (typeof AndroidBridge !== 'undefined') {
     AndroidBridge.onError('Monaco loader not found. Place monaco/vs/ in assets.');
   }
 }
+
+// ── 新增：配置 Monaco 环境变量，解决 file:// 协议下无法加载 Web Worker 的限制 ──
+window.MonacoEnvironment = {
+  getWorker: function (workerId, label) {
+    // 映射关系：根据你项目 structure.txt 中 Vite 实际打包出来的带 Hash 文件名进行匹配
+    var workerFiles = {
+      editorWorkerService: 'vs/assets/editor.worker-Be8ye1pW.js',
+      css: 'vs/assets/css.worker-HnVq6Ewq.js',
+      html: 'vs/assets/html.worker-B51mlPHg.js',
+      json: 'vs/assets/json.worker-DKiEKt88.js',
+      typescript: 'vs/assets/ts.worker-CMbG-7ft.js',
+      javascript: 'vs/assets/ts.worker-CMbG-7ft.js'
+    };
+    
+    var workerPath = workerFiles[label] || workerFiles['editorWorkerService'];
+    
+    try {
+      // 使用同步 XHR 读取本地 assets 中的 Worker 源码
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', workerPath, false);
+      xhr.send(null);
+      var workerCode = xhr.responseText;
+      
+      // 将源码包装为 Blob URL，绕过 WebView 对 file:// 的 Origin 安全检查
+      var blob = new Blob([workerCode], { type: 'application/javascript' });
+      return new Worker(URL.createObjectURL(blob));
+    } catch (e) {
+      console.error('Monaco Worker 加载失败，降级处理:', e);
+      return new Worker(workerPath);
+    }
+  }
+};
 
 if (typeof require !== 'undefined') {
   // ── loader.js 加载成功，使用本地资源 ──────────────────────────
@@ -55,7 +85,7 @@ if (typeof require !== 'undefined') {
   require(['vs/editor/editor.main'], function () {
     initEditor();
   });
-} // else: onerror 已处理
+}
 
 function initEditor() {
   window.monaco = monaco;
