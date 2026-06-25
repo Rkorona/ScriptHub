@@ -108,7 +108,8 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
 
-    val soraVersion = "0.23.7"
-    implementation("io.github.rosemoe:editor:$soraVersion")
+    val soraVersion = "0.24.6"
+    implementation("io.github.rosemoe:editor-bom:$soraVersion")
+    implementation("io.github.rosemoe:editor")
     implementation("io.github.rosemoe:language-textmate:$soraVersion")
 }
