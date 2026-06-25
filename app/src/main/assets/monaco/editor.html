@@ -196,6 +196,8 @@ function initEditor() {
     minimap:    { enabled: false },
     scrollBeyondLastLine: false,
     automaticLayout: true,
+    domReadOnly: false,
+    readOnly: false,
     wordWrap:   'off',
     tabSize:    4,
     insertSpaces: true,
@@ -237,6 +239,14 @@ function initEditor() {
   // ── 光标移动 ─────────────────────────────────────────────────────
   window.editor.onDidChangeCursorPosition(function (e) {
     AndroidBridge.onCursorChanged(e.position.lineNumber, e.position.column);
+  });
+
+  window.editor.onDidFocusEditorText(function () {
+    AndroidBridge.onEditorFocused();
+  });
+
+  window.editor.onDidFocusEditorWidget(function () {
+    AndroidBridge.onEditorFocused();
   });
 
   scheduleLayout();
@@ -330,7 +340,14 @@ function moveCursor(direction) {
 
 /** 聚焦编辑器（代码键盘按键后重新聚焦）*/
 function focusEditor() {
+  if (!window.editor) return;
   window.editor.focus();
+  var input = document.querySelector('.monaco-editor textarea.inputarea');
+  if (input) {
+    input.removeAttribute('readonly');
+    input.focus();
+  }
+  AndroidBridge.onEditorFocused();
 }
 </script>
 </body>

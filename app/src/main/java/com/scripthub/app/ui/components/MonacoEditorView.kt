@@ -8,10 +8,13 @@ import android.util.Base64
 import android.util.Log
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.MotionEvent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +30,14 @@ import android.webkit.WebChromeClient
 import android.webkit.ConsoleMessage
 
 private const val TAG = "MonacoEditorView"
+
+private fun showKeyboard(webView: WebView) {
+    webView.post {
+        webView.requestFocus(View.FOCUS_DOWN)
+        val imm = webView.context.getSystemService(InputMethodManager::class.java) ?: return@post
+        imm.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT)
+    }
+}
 
 // ──────────────────────────────────────────────────────────────────
 // MonacoEditorController — 替代 CodeEditor 引用，暴露给父级使用
@@ -83,8 +94,11 @@ class MonacoEditorController(private val webView: WebView) {
     /** 光标移动：left | right | up | down */
     fun moveCursor(direction: String) = evalJs("moveCursor('$direction')")
 
-    /** 聚焦编辑器 */
-    fun focus() = evalJs("focusEditor()")
+    /** 聚焦编辑器并弹出系统键盘 */
+    fun focus() {
+        evalJs("focusEditor()")
+        showKeyboard(webView)
+    }
 
     /** 强制重新布局（Android WebView 尺寸变化时需手动触发） */
     fun layout() = evalJs("layoutEditor()")
@@ -107,6 +121,7 @@ class MonacoEditorController(private val webView: WebView) {
 // ──────────────────────────────────────────────────────────────────
 
 private class MonacoBridge(
+    private val webView: WebView,
     private val onStatsChanged: (lines: Int, chars: Int) -> Unit,
     private val onCursorChanged: (line: Int, col: Int) -> Unit,
     private val onReady: () -> Unit,
@@ -128,6 +143,11 @@ private class MonacoBridge(
     fun onReady() {
         Log.d(TAG, "Monaco 就绪")
         main.post { onReady.invoke() }
+    }
+
+    @JavascriptInterface
+    fun onEditorFocused() {
+        main.post { showKeyboard(webView) }
     }
 
     @JavascriptInterface
@@ -179,13 +199,22 @@ fun MonacoEditorView(
 
         AndroidView(
             factory = { ctx ->
-                WebView(ctx).apply {
+                MonacoWebView(ctx).apply {
                     // WebView 必须 MATCH_PARENT，否则在 Compose 中高度可能为 0
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
+                    isFocusable = true
+                    isFocusableInTouchMode = true
                     setBackgroundColor(Color.parseColor(if (isDark) "#0D0D0D" else "#FAFAFA"))
+
+                    setOnTouchListener { v, event ->
+                        if (event.action == MotionEvent.ACTION_DOWN && !v.hasFocus()) {
+                            v.requestFocus(View.FOCUS_DOWN)
+                        }
+                        false
+                    }
 
                     // ── WebView 基础与安全权限配置 ──────────────────────────────
                     settings.javaScriptEnabled = true
@@ -223,6 +252,7 @@ fun MonacoEditorView(
                     // ── JS Bridge ─────────────────────────────────────
                     addJavascriptInterface(
                         MonacoBridge(
+                            webView = this,
                             onStatsChanged = onStats,
                             onCursorChanged = onCursor,
                             onReady = { isReady = true },
