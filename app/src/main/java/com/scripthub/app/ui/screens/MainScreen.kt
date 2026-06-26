@@ -143,7 +143,8 @@ fun MainScreen() {
                   currentRoute == "EnvVars"       ||
                   currentRoute == "Dependencies"  ||
                   currentRoute == "LinuxEnv"      ||
-                  currentRoute == "Terminal"
+                  currentRoute == "Terminal"      ||
+                  currentRoute == "SpckEditor"
     ) {
         currentRoute = when (currentRoute) {
             "ScriptEditor" -> "ScriptManager"
@@ -228,13 +229,14 @@ fun MainScreen() {
         "ScriptEditor"   -> "代码编辑"
         "LinuxEnv"       -> "Linux 运行环境"
         "Terminal"       -> "Shell 终端"
+        "SpckEditor"     -> "Spck 编辑器"
         else             -> "ScriptHub"
     }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            if (currentRoute != "ScriptEditor") {
+            if (currentRoute != "ScriptEditor" && currentRoute != "SpckEditor") {
                 ExpressiveTopAppBar(
                     titleText     = titleText,
                     scrollBehavior = scrollBehavior,
@@ -253,7 +255,7 @@ fun MainScreen() {
             }
         },
         bottomBar = {
-            if (currentRoute != "ScriptEditor") {
+            if (currentRoute != "ScriptEditor" && currentRoute != "SpckEditor") {
                 val isSubScreen = currentRoute == "EnvVars"     ||
                                   currentRoute == "Dependencies" ||
                                   currentRoute == "LinuxEnv"     ||
@@ -295,6 +297,7 @@ fun MainScreen() {
                     onSetupComplete = { navigateTo("Settings") }
                 )
                 "Terminal"       -> ShellTerminalScreen(contentPadding = innerPadding)
+                "SpckEditor"     -> SpckEditorScreen(onBack = { navigateTo("Settings") })
                 "ScriptEditor"   -> ScriptEditorScreen(
                     fileName   = editingFileName,
                     isFolder   = editingIsFolder,
