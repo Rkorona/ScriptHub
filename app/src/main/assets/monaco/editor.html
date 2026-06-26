@@ -404,7 +404,7 @@ function editorRedo() {
 }
 
 /** 光标移动：left | right | up | down
- *  有选区时扩展/收缩选区；无选区时普通移动光标 */
+ *  有选区时扩展/收缩选区（移动终点）；无选区时普通移动光标 */
 function moveCursor(direction) {
   var hasSelection = window.editor && !window.editor.getSelection().isEmpty();
   var moveMap = {
@@ -423,6 +423,72 @@ function moveCursor(direction) {
   if (cmd) {
     window.editor.trigger('keyboard', cmd, null);
   }
+}
+
+/** 在模型中移动一个位置（上下左右）*/
+function _movePos(model, pos, direction) {
+  var lineCount = model.getLineCount();
+  if (direction === 'left') {
+    var off = model.getOffsetAt(pos);
+    return off > 0 ? model.getPositionAt(off - 1) : pos;
+  } else if (direction === 'right') {
+    var off = model.getOffsetAt(pos);
+    var max = model.getValueLength();
+    return off < max ? model.getPositionAt(off + 1) : pos;
+  } else if (direction === 'up') {
+    if (pos.lineNumber > 1) {
+      var prevMax = model.getLineMaxColumn(pos.lineNumber - 1);
+      return { lineNumber: pos.lineNumber - 1, column: Math.min(pos.column, prevMax) };
+    }
+    return pos;
+  } else if (direction === 'down') {
+    if (pos.lineNumber < lineCount) {
+      var nextMax = model.getLineMaxColumn(pos.lineNumber + 1);
+      return { lineNumber: pos.lineNumber + 1, column: Math.min(pos.column, nextMax) };
+    }
+    return pos;
+  }
+  return pos;
+}
+
+/** 调整选区起点（左手柄），终点固定 */
+function adjustSelectionStart(direction) {
+  if (!window.editor) return;
+  var sel = window.editor.getSelection();
+  if (sel.isEmpty()) return;
+  var model = window.editor.getModel();
+  var startPos = { lineNumber: sel.startLineNumber, column: sel.startColumn };
+  var endPos   = { lineNumber: sel.endLineNumber,   column: sel.endColumn   };
+  var newStart = _movePos(model, startPos, direction);
+  var newStartOff = model.getOffsetAt(newStart);
+  var endOff      = model.getOffsetAt(endPos);
+  if (newStartOff >= endOff) return;
+  window.editor.setSelection({
+    selectionStartLineNumber: endPos.lineNumber,
+    selectionStartColumn:     endPos.column,
+    positionLineNumber:       newStart.lineNumber,
+    positionColumn:           newStart.column
+  });
+}
+
+/** 调整选区终点（右手柄），起点固定 */
+function adjustSelectionEnd(direction) {
+  if (!window.editor) return;
+  var sel = window.editor.getSelection();
+  if (sel.isEmpty()) return;
+  var model = window.editor.getModel();
+  var startPos = { lineNumber: sel.startLineNumber, column: sel.startColumn };
+  var endPos   = { lineNumber: sel.endLineNumber,   column: sel.endColumn   };
+  var newEnd    = _movePos(model, endPos, direction);
+  var startOff  = model.getOffsetAt(startPos);
+  var newEndOff = model.getOffsetAt(newEnd);
+  if (newEndOff <= startOff) return;
+  window.editor.setSelection({
+    selectionStartLineNumber: startPos.lineNumber,
+    selectionStartColumn:     startPos.column,
+    positionLineNumber:       newEnd.lineNumber,
+    positionColumn:           newEnd.column
+  });
 }
 
 // ════════════════════════════════════════════════════════════════

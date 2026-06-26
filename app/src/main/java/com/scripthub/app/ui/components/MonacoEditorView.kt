@@ -94,6 +94,12 @@ class MonacoEditorController(private val webView: WebView) {
     /** 光标移动：left | right | up | down */
     fun moveCursor(direction: String) = evalJs("moveCursor('$direction')")
 
+    /** 调整选区起点（左手柄），终点固定 */
+    fun adjustSelectionStart(direction: String) = evalJs("adjustSelectionStart('$direction')")
+
+    /** 调整选区终点（右手柄），起点固定 */
+    fun adjustSelectionEnd(direction: String) = evalJs("adjustSelectionEnd('$direction')")
+
     /** 删除当前选区（剪切时使用） */
     fun deleteSelection() = evalJs("deleteSelection()")
 

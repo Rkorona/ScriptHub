@@ -267,6 +267,7 @@ fun ScriptEditorScreen(
     var cursorCol    by remember { mutableIntStateOf(1) }
     var hasSelection by remember { mutableStateOf(false) }
     var selectedText by remember { mutableStateOf("") }
+    var adjustingStart by remember { mutableStateOf(false) }
 
     val clipboard = remember(context) {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -574,13 +575,73 @@ fun ScriptEditorScreen(
                                 modifier = Modifier.height(22.dp).padding(horizontal = 2.dp),
                                 color    = colors.outlineVariant
                             )
+
+                            // ── 选区端点切换按钮 ────────────────────────────────
+                            Surface(
+                                onClick  = { adjustingStart = !adjustingStart },
+                                shape    = RoundedCornerShape(7.dp),
+                                color    = if (adjustingStart)
+                                               colors.primaryContainer
+                                           else
+                                               colors.surfaceContainerHigh,
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier         = Modifier.padding(horizontal = 10.dp)
+                                ) {
+                                    Text(
+                                        text       = if (adjustingStart) "◀调起点" else "调终点▶",
+                                        fontSize   = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color      = if (adjustingStart)
+                                                         colors.onPrimaryContainer
+                                                     else
+                                                         colors.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            VerticalDivider(
+                                modifier = Modifier.height(22.dp).padding(horizontal = 2.dp),
+                                color    = colors.outlineVariant
+                            )
                         }
 
-                        // 方向移动键
-                        CodeKey("←", special = true) { controllerRef.value?.moveCursor("left")  }
-                        CodeKey("↑", special = true) { controllerRef.value?.moveCursor("up")    }
-                        CodeKey("↓", special = true) { controllerRef.value?.moveCursor("down")  }
-                        CodeKey("→", special = true) { controllerRef.value?.moveCursor("right") }
+                        // 方向移动键：有选区时根据 adjustingStart 决定调整哪一端
+                        CodeKey("←", special = true) {
+                            if (hasSelection) {
+                                if (adjustingStart) controllerRef.value?.adjustSelectionStart("left")
+                                else                controllerRef.value?.adjustSelectionEnd("left")
+                            } else {
+                                controllerRef.value?.moveCursor("left")
+                            }
+                        }
+                        CodeKey("↑", special = true) {
+                            if (hasSelection) {
+                                if (adjustingStart) controllerRef.value?.adjustSelectionStart("up")
+                                else                controllerRef.value?.adjustSelectionEnd("up")
+                            } else {
+                                controllerRef.value?.moveCursor("up")
+                            }
+                        }
+                        CodeKey("↓", special = true) {
+                            if (hasSelection) {
+                                if (adjustingStart) controllerRef.value?.adjustSelectionStart("down")
+                                else                controllerRef.value?.adjustSelectionEnd("down")
+                            } else {
+                                controllerRef.value?.moveCursor("down")
+                            }
+                        }
+                        CodeKey("→", special = true) {
+                            if (hasSelection) {
+                                if (adjustingStart) controllerRef.value?.adjustSelectionStart("right")
+                                else                controllerRef.value?.adjustSelectionEnd("right")
+                            } else {
+                                controllerRef.value?.moveCursor("right")
+                            }
+                        }
 
                         // 常用符号
                         listOf("(", ")", "{", "}", "[", "]", "/", "=", ",", ";", "\"", "'", "<", ">", "`", "-", "!").forEach { sym ->
@@ -623,7 +684,11 @@ fun ScriptEditorScreen(
                     onEditorReady      = { controller -> controllerRef.value = controller },
                     onStats            = { lines, chars -> lineCount = lines; charCount = chars },
                     onCursor           = { line, col -> cursorLine = line; cursorCol = col },
-                    onSelectionChanged = { has, text -> hasSelection = has; selectedText = text },
+                    onSelectionChanged = { has, text ->
+                        hasSelection = has
+                        selectedText = text
+                        if (!has) adjustingStart = false
+                    },
                     modifier           = Modifier.fillMaxSize()
                 )
             }
