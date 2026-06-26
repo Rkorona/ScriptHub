@@ -707,16 +707,36 @@ fun ScriptCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // 第二行：类型 · 入口（仅工程项目），克制的灰色元信息，对齐截图的"文件夹/0 B"风格
-                Text(
-                    text  = if (script.isFolder) "${script.type} · 入口 ${script.entryPoint}" else script.type,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                )
+                // 第二行：语言徽章 + 入口（仅工程项目）
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = themeColor.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text       = script.type,
+                            style      = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color      = themeColor,
+                            modifier   = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                    if (script.isFolder) {
+                        Text(
+                            text     = "· 入口 ${script.entryPoint}",
+                            style    = MaterialTheme.typography.bodySmall,
+                            color    = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            maxLines = 1
+                        )
+                    }
+                }
 
-                Spacer(modifier = Modifier.height(1.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
                 // 第三行：触发条件 + 上次运行，对齐截图的"修改于 ..."一行
                 Text(
