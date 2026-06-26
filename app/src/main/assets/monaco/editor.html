@@ -699,6 +699,79 @@ function focusEditor() {
   }
   AndroidBridge.onEditorFocused();
 }
+
+// ════════════════════════════════════════════════════════════════
+// 移动端触摸增强
+// 单击  → 通知 Kotlin（用于粘贴气泡）
+// 双击  → 选中光标处单词
+// 长按  → 选中光标处单词
+// ════════════════════════════════════════════════════════════════
+(function installTouchHandlers() {
+  var tapCount    = 0;
+  var tapTimer    = null;
+  var longTimer   = null;
+  var lastX = 0, lastY = 0;
+  var moved = false;
+
+  /** 通过屏幕坐标选中该处的单词（或整行非空内容） */
+  function selectWordAt(x, y) {
+    if (!window.editor) return;
+    try {
+      var target = window.editor.getTargetAtClientPoint(x, y);
+      if (!target || !target.position) return;
+      var pos   = target.position;
+      var model = window.editor.getModel();
+      var word  = model.getWordAtPosition(pos);
+      if (word) {
+        window.editor.setSelection({
+          startLineNumber: pos.lineNumber, startColumn: word.startColumn,
+          endLineNumber:   pos.lineNumber, endColumn:   word.endColumn
+        });
+      } else {
+        var lineLen = model.getLineLength(pos.lineNumber);
+        if (lineLen > 0) {
+          window.editor.setSelection({
+            startLineNumber: pos.lineNumber, startColumn: 1,
+            endLineNumber:   pos.lineNumber, endColumn:   lineLen + 1
+          });
+        }
+      }
+      window.editor.focus();
+    } catch (e) {}
+  }
+
+  document.addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) { clearTimeout(longTimer); return; }
+    lastX = e.touches[0].clientX;
+    lastY = e.touches[0].clientY;
+    moved = false;
+    clearTimeout(longTimer);
+    longTimer = setTimeout(function () {
+      if (!moved) selectWordAt(lastX, lastY);
+    }, 500);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function () {
+    moved = true;
+    clearTimeout(longTimer);
+  }, { passive: true });
+
+  document.addEventListener('touchend', function (e) {
+    clearTimeout(longTimer);
+    if (moved) return;
+    tapCount++;
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(function () {
+      var n = tapCount;
+      tapCount = 0;
+      if (n >= 2) {
+        selectWordAt(lastX, lastY);
+      } else {
+        try { AndroidBridge.onTap(); } catch (err) {}
+      }
+    }, 220);
+  }, { passive: true });
+})();
 </script>
 </body>
 </html>

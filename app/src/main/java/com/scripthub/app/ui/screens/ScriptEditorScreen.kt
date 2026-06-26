@@ -293,13 +293,9 @@ fun ScriptEditorScreen(
         }
     }
 
-    // ── 监听选区变化，有选区时自动关闭手动粘贴气泡 ──────────────────────
+    // ── 选区出现时关闭手动粘贴气泡（选区工具栏接管） ──────────────────
     LaunchedEffect(hasSelection) {
-        if (hasSelection) {
-            showPasteBubbleManually = false
-            offsetX = 0f
-            offsetY = 120f
-        }
+        if (hasSelection) showPasteBubbleManually = false
     }
 
     // ── 文件加载 ──────────────────────────────────────────────────
@@ -606,36 +602,25 @@ fun ScriptEditorScreen(
                     }
                 }
             } else {
-                // 允许包裹一层 clickable 用于拦截空白区域的点击、双击或长按，以便在任何时候呼出浮动的粘贴气泡！
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable(
-                            // 即使编辑器是完全空的，双击或长按空白区域也可以直接在这里强行激活浮动菜单
-                            onClick = {
-                                // 点击空白处时，如果目前没有选中，允许切换或关闭手动气泡
-                                if (!hasSelection) {
-                                    showPasteBubbleManually = !showPasteBubbleManually
-                                    offsetX = 0f
-                                    offsetY = 120f
-                                }
-                            }
-                        )
-                ) {
-                    MonacoEditorView(
-                        initialContent     = initialContent,
-                        language           = lang.monacoId,
-                        onEditorReady      = { controller -> controllerRef.value = controller },
-                        onStats            = { lines, chars -> lineCount = lines; charCount = chars },
-                        onCursor           = { line, col -> cursorLine = line; cursorCol = col },
-                        onSelectionChanged = { has, text -> hasSelection = has; selectedText = text },
-                        modifier           = Modifier.fillMaxSize()
-                    )
-                }
+                MonacoEditorView(
+                    initialContent     = initialContent,
+                    language           = lang.monacoId,
+                    onEditorReady      = { controller -> controllerRef.value = controller },
+                    onStats            = { lines, chars -> lineCount = lines; charCount = chars },
+                    onCursor           = { line, col -> cursorLine = line; cursorCol = col },
+                    onSelectionChanged = { has, text -> hasSelection = has; selectedText = text },
+                    onTap              = {
+                        if (!hasSelection) {
+                            showPasteBubbleManually = !showPasteBubbleManually
+                            if (showPasteBubbleManually) { offsetX = 0f; offsetY = 120f }
+                        }
+                    },
+                    modifier           = Modifier.fillMaxSize()
+                )
             }
 
             // ── 浮动气泡菜单 (支持：1. 有选区的完整菜单； 2. 无选区但手动呼出的简易“粘贴”菜单) ──
-            val isBubbleVisible = hasSelection || (showPasteBubbleManually && hasClipboardText.value)
+            val isBubbleVisible = hasSelection || showPasteBubbleManually
 
             AnimatedVisibility(
                 visible = isBubbleVisible,
@@ -667,20 +652,23 @@ fun ScriptEditorScreen(
                         modifier              = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.DragIndicator,
+                            imageVector        = Icons.Default.DragIndicator,
                             contentDescription = "拖动",
-                            tint = colors.outline.copy(alpha = 0.5f),
-                            modifier = Modifier.size(16.dp)
+                            tint               = colors.outline.copy(alpha = 0.5f),
+                            modifier           = Modifier.size(16.dp)
                         )
 
-                        if (hasSelection) {
-                            // 状态 A：有选区。显示 全选 | 剪切 | 复制 | 粘贴
-                            TextButton(
-                                onClick        = { controllerRef.value?.selectAll() },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier       = Modifier.height(32.dp)
-                            ) { Text("全选", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        // 全选（有无选区都显示）
+                        TextButton(
+                            onClick = {
+                                controllerRef.value?.selectAll()
+                                showPasteBubbleManually = false
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier       = Modifier.height(32.dp)
+                        ) { Text("全选", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 
+                        if (hasSelection) {
                             VerticalDivider(modifier = Modifier.height(16.dp), color = colors.outlineVariant)
 
                             TextButton(
@@ -706,28 +694,14 @@ fun ScriptEditorScreen(
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                                 modifier       = Modifier.height(32.dp)
                             ) { Text("复制", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-
-                            VerticalDivider(modifier = Modifier.height(16.dp), color = colors.outlineVariant)
                         }
 
-                        // 状态 B：无选区但剪贴板有东西，只显示【全选】和【粘贴】两个最实用的选项
-                        if (!hasSelection) {
-                            TextButton(
-                                onClick        = { 
-                                    controllerRef.value?.selectAll()
-                                    showPasteBubbleManually = false
-                                },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier       = Modifier.height(32.dp)
-                            ) { Text("全选", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        VerticalDivider(modifier = Modifier.height(16.dp), color = colors.outlineVariant)
 
-                            VerticalDivider(modifier = Modifier.height(16.dp), color = colors.outlineVariant)
-                        }
-
+                        // 粘贴：剪贴板为空时禁用而非隐藏
                         TextButton(
-                            onClick = {
-                                performPaste()
-                            },
+                            onClick        = { performPaste() },
+                            enabled        = hasClipboardText.value,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                             modifier       = Modifier.height(32.dp)
                         ) { Text("粘贴", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
