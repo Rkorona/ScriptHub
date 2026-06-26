@@ -556,7 +556,7 @@ fun ScriptEditorScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier          = Modifier
                             .fillMaxWidth()
-                            .height(28.dp)
+                            .height(24.dp)
                             .padding(horizontal = 12.dp)
                     ) {
                         Text(
@@ -594,7 +594,7 @@ fun ScriptEditorScreen(
 
                     HorizontalDivider(color = colors.outlineVariant)
 
-                    // ── 单行：光标移动 & 辅助符号 (在此处新增“常驻粘贴按钮”防丢) ───────────────────────
+                    // ── ───────────────────────
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment     = Alignment.CenterVertically,
@@ -603,14 +603,7 @@ fun ScriptEditorScreen(
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        // 1. 新增【常驻粘贴】按钮：无论何时，剪贴板有东西就能在这里一键粘贴！
-                        CodeKey(
-                            label   = "粘贴", 
-                            wide    = true, 
-                            special = true
-                        ) {
-                            performPaste()
-                        }
+                        
 
                         // 原方向移动键
                         CodeKey("←", special = true) { controllerRef.value?.moveCursor("left")  }
