@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.scripthub.app.utils.DistroPreference
+import com.scripthub.app.utils.EditorPreference
 import com.scripthub.app.utils.FileHelper
 import com.scripthub.app.utils.ProotManager
 import com.scripthub.app.utils.ScriptForegroundService
@@ -59,6 +60,8 @@ fun SettingsScreen(
 
     val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
     var fgServiceEnabled by remember { mutableStateOf(prefs.getBoolean("fg_service_enabled", false)) }
+
+    var selectedEditor by remember { mutableStateOf(EditorPreference.getEditor(context)) }
 
     LazyColumn(
         modifier = Modifier
@@ -202,6 +205,49 @@ fun SettingsScreen(
                         title    = "Spck 编辑器",
                         subtitle = "功能完整的 Web IDE，支持 Git 与多语言"
                     ) { onNavigate("SpckEditor") }
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(4.dp)) }
+
+        item {
+            Text(
+                text       = "代码编辑器",
+                style      = MaterialTheme.typography.labelLarge,
+                color      = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Black,
+                modifier   = Modifier.padding(start = 8.dp, bottom = 4.dp)
+            )
+            Card(
+                shape  = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    EditorOptionItem(
+                        title       = "Monaco Editor",
+                        subtitle    = "VS Code 同款引擎 · 深度集成脚本文件读写",
+                        icon        = Icons.Default.Code,
+                        selected    = selectedEditor == EditorPreference.MONACO,
+                        onClick     = {
+                            selectedEditor = EditorPreference.MONACO
+                            EditorPreference.setEditor(context, EditorPreference.MONACO)
+                        }
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        color    = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
+                    EditorOptionItem(
+                        title       = "Spck Editor",
+                        subtitle    = "功能完整的 Web IDE · 支持 Git、多语言与项目管理",
+                        icon        = Icons.Default.Extension,
+                        selected    = selectedEditor == EditorPreference.SPCK,
+                        onClick     = {
+                            selectedEditor = EditorPreference.SPCK
+                            EditorPreference.setEditor(context, EditorPreference.SPCK)
+                        }
+                    )
                 }
             }
         }
@@ -516,6 +562,60 @@ private fun ConfigListItem(icon: ImageVector, title: String, subtitle: String, o
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
+    }
+}
+
+@Composable
+private fun EditorOptionItem(
+    title:    String,
+    subtitle: String,
+    icon:     ImageVector,
+    selected: Boolean,
+    onClick:  () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier          = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .background(
+                    if (selected) colors.primaryContainer else colors.surfaceContainerHigh,
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint     = if (selected) colors.primary else colors.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text       = title,
+                style      = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color      = if (selected) colors.primary else colors.onSurface
+            )
+            Text(
+                text  = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant
+            )
+        }
+        RadioButton(
+            selected = selected,
+            onClick  = onClick,
+            colors   = RadioButtonDefaults.colors(selectedColor = colors.primary)
+        )
     }
 }
 

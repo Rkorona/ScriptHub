@@ -34,6 +34,7 @@ import com.scripthub.app.ui.components.FolderFileBrowserSheet
 import com.scripthub.app.ui.components.GlobalLogBottomSheet
 import com.scripthub.app.utils.CronNextRunCalculator
 import com.scripthub.app.utils.DistroPreference
+import com.scripthub.app.utils.EditorPreference
 import com.scripthub.app.utils.FileHelper
 import com.scripthub.app.utils.ScriptForegroundService
 import kotlinx.coroutines.launch
@@ -284,7 +285,9 @@ fun MainScreen() {
                             editingFileName   = script.name
                             editingIsFolder   = false
                             editingEntryPoint = script.name
-                            navigateTo("ScriptEditor")
+                            val dest = if (EditorPreference.getEditor(context) == EditorPreference.SPCK)
+                                "SpckEditor" else "ScriptEditor"
+                            navigateTo(dest)
                         }
                     }
                 )
